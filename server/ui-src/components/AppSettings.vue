@@ -14,6 +14,12 @@ export default {
 			timezones,
 			chaosConfig: false,
 			chaosUpdated: false,
+			tagFilters: [],
+			tagFiltersLoading: false,
+			tagFiltersSaving: false,
+			tagFiltersLoaded: false,
+			tagFiltersApplying: false,
+			tagFiltersApplyResult: null,
 			defaultReleaseAddressesOptions: mailbox.defaultReleaseAddresses.slice(), // set with default release addresses
 		};
 	},
@@ -71,6 +77,101 @@ export default {
 					this.chaosUpdated = false;
 				});
 			});
+		},
+
+		loadTagFilters() {
+			if (this.tagFiltersLoading) {
+				return;
+			}
+
+			this.tagFiltersLoading = true;
+			this.get(
+				this.resolve("/api/v1/tag-filters"),
+				null,
+				(response) => {
+					this.tagFilters = (response.data || []).map((r) => ({
+						match: r.match || "",
+						tags: (r.tags || []).join(", "),
+					}));
+					if (this.tagFilters.length === 0) {
+						this.addTagFilter();
+					}
+					this.tagFiltersLoaded = true;
+					this.tagFiltersLoading = false;
+				},
+				() => {
+					this.tagFiltersLoading = false;
+				},
+				true,
+			);
+		},
+
+		addTagFilter() {
+			this.tagFilters.push({
+				match: "",
+				tags: "",
+			});
+		},
+
+		removeTagFilter(index) {
+			this.tagFilters.splice(index, 1);
+			if (this.tagFilters.length === 0) {
+				this.addTagFilter();
+			}
+		},
+
+		saveTagFilters() {
+			if (this.tagFiltersSaving) {
+				return;
+			}
+
+			this.tagFiltersSaving = true;
+
+			const payload = {
+				Filters: this.tagFilters
+					.map((r) => {
+						const match = (r.match || "").trim();
+						const tags = (r.tags || "")
+							.split(",")
+							.map((t) => t.trim())
+							.filter((t) => t !== "");
+						return { match, tags };
+					})
+					.filter((r) => r.match !== "" && r.tags.length > 0),
+			};
+
+			this.put(this.resolve("/api/v1/tag-filters"), payload, (response) => {
+				this.tagFilters = (response.data || []).map((r) => ({
+					match: r.match || "",
+					tags: (r.tags || []).join(", "),
+				}));
+				if (this.tagFilters.length === 0) {
+					this.addTagFilter();
+				}
+				this.tagFiltersSaving = false;
+			});
+		},
+
+		applyTagFilters() {
+			if (this.tagFiltersApplying) {
+				return;
+			}
+			this.tagFiltersApplying = true;
+			this.tagFiltersApplyResult = null;
+			this.post(
+				this.resolve("/api/v1/tag-filters/apply"),
+				null,
+				(response) => {
+					this.tagFiltersApplyResult = response.data.updated;
+					this.tagFiltersApplying = false;
+				},
+			);
+			// reset applying state on next tick in case of error (mixin swallows it)
+			setTimeout(() => {
+				if (this.tagFiltersApplying) {
+					this.tagFiltersApplying = false;
+				}
+			}, 10000);
 		},
 
 		saveChaos() {
@@ -147,6 +248,21 @@ export default {
 								@click="loadChaos"
 							>
 								Chaos
+							</button>
+						</li>
+						<li class="nav-item" role="presentation">
+							<button
+								id="tag-filters-tab"
+								class="nav-link"
+								data-bs-toggle="tab"
+								data-bs-target="#tag-filters-tab-pane"
+								type="button"
+								role="tab"
+								aria-controls="tag-filters-tab-pane"
+								aria-selected="false"
+								@click="!tagFiltersLoaded ? loadTagFilters() : null"
+							>
+								Tag filters
 							</button>
 						</li>
 					</ul>
@@ -296,6 +412,69 @@ export default {
 									</option>
 								</select>
 								<div class="invalid-feedback">Invalid email address</div>
+							</div>
+						</div>
+
+						<div
+							id="tag-filters-tab-pane"
+							class="tab-pane fade"
+							role="tabpanel"
+							aria-labelledby="tag-filters-tab"
+							tabindex="0"
+						>
+							<div class="my-3">
+								<div class="form-text mb-3">
+									Configure runtime auto-tagging rules. Each rule applies tags when the search match
+									matches a new message (for example: <code>subject:invoice</code>,
+									<code>from:noreply@example.com</code>, or plain text).
+								</div>
+								<div
+									v-for="(rule, index) in tagFilters"
+									:key="'tag-filter-' + index"
+									class="border rounded p-3 mb-2"
+								>
+									<div class="mb-2">
+										<label class="form-label">Match</label>
+										<input
+											v-model="rule.match"
+											type="text"
+											class="form-control"
+											placeholder='subject:invoice or "exact phrase"'
+										/>
+									</div>
+									<div class="mb-2">
+										<label class="form-label">Tags (comma separated)</label>
+										<input
+											v-model="rule.tags"
+											type="text"
+											class="form-control"
+											placeholder="Billing, Priority"
+										/>
+									</div>
+									<button class="btn btn-sm btn-outline-danger" @click="removeTagFilter(index)">
+										Remove rule
+									</button>
+								</div>
+
+							<div class="d-flex gap-2 flex-wrap align-items-center">
+								<button class="btn btn-outline-secondary" @click="addTagFilter">Add rule</button>
+								<button class="btn btn-success" :disabled="tagFiltersSaving" @click="saveTagFilters">
+									<template v-if="tagFiltersSaving">Saving...</template>
+									<template v-else>Save rules</template>
+								</button>
+								<button
+									class="btn btn-outline-primary"
+									:disabled="tagFiltersApplying"
+									@click="applyTagFilters"
+									title="Apply current rules to all existing messages"
+								>
+									<template v-if="tagFiltersApplying">Applying...</template>
+									<template v-else>Apply to existing messages</template>
+								</button>
+								<span v-if="tagFiltersApplyResult !== null" class="text-success small">
+									✓ {{ tagFiltersApplyResult }} message{{ tagFiltersApplyResult !== 1 ? 's' : '' }} updated
+								</span>
+								</div>
 							</div>
 						</div>
 

@@ -27,7 +27,17 @@ var tagFilters = []TagFilter{}
 func LoadTagFilters() {
 	tagFilters = []TagFilter{}
 
+	allFilters := make([]TagFilterRule, 0, len(config.TagFilters)+8)
+
 	for _, t := range config.TagFilters {
+		allFilters = append(allFilters, TagFilterRule{Match: t.Match, Tags: t.Tags})
+	}
+
+	for _, t := range GetRuntimeTagFilters() {
+		allFilters = append(allFilters, t)
+	}
+
+	for _, t := range allFilters {
 		match := strings.TrimSpace(t.Match)
 		if match == "" {
 			logger.Log().Warnf("[tags] ignoring tag item with missing 'match'")
