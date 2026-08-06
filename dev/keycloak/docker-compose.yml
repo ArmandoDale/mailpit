@@ -1,0 +1,43 @@
+# Local identity provider for developing the Mailpit OIDC integration.
+#
+# Keycloak is used rather than a stub because it is a real OP: real discovery,
+# real JWKS, real authorization_code + PKCE. Code that works against it will
+# work against WSO2 modulo configuration.
+#
+# The imported realm deliberately reproduces the quirks we know WSO2 has:
+#   - roles travel in a "groups" claim, requested via a "groups" scope
+#   - role names are prefixed with a user store qualifier ("ICTIPZS/")
+#
+# What it cannot reproduce is the WSO2 tenant issuer mismatch — Keycloak
+# reports the issuer correctly. That path is covered by --oidc-skip-issuer-check
+# and must be verified against the real provider.
+#
+#   docker compose up -d
+#   Console: http://localhost:8080  (admin / admin)
+#
+# Test users, all with password "password":
+#   alfa   -> ICTIPZS/mailpit-progetto-alfa
+#   beta   -> ICTIPZS/mailpit-progetto-beta
+#   both   -> both project roles
+#   admin1 -> ICTIPZS/mailpit-admin
+#   nessuno-> only ICTIPZS/Domain Users (no Mailpit role: sees untagged only)
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command:
+      - start-dev
+      - --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: "8080"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./realm-mailpit.json:/opt/keycloak/data/import/realm-mailpit.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && echo -e 'GET /realms/mailpit/.well-known/openid-configuration HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q 'jwks_uri'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30

@@ -1,0 +1,149 @@
+{
+  "realm": "mailpit",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "roles": {
+    "realm": [
+      { "name": "ICTIPZS/mailpit-progetto-alfa", "description": "Progetto Alfa" },
+      { "name": "ICTIPZS/mailpit-progetto-beta", "description": "Progetto Beta" },
+      { "name": "ICTIPZS/mailpit-admin", "description": "Mailpit administrator" },
+      { "name": "ICTIPZS/Domain Users", "description": "Unrelated corporate group, must be ignored" }
+    ]
+  },
+  "clientScopes": [
+    {
+      "name": "groups",
+      "description": "Roles the user holds, as the roles claim",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "groups",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "mailpit",
+      "name": "Mailpit",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "mailpit-dev-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8025/auth/callback",
+        "http://127.0.0.1:8025/auth/callback"
+      ],
+      "webOrigins": ["http://localhost:8025", "http://127.0.0.1:8025"],
+      "defaultClientScopes": ["profile", "email", "groups"],
+      "protocolMappers": [
+        {
+          "name": "username",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "config": {
+            "user.attribute": "username",
+            "claim.name": "preferred_username",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "email",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "config": {
+            "user.attribute": "email",
+            "claim.name": "email",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:8025/*"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "alfa",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "alfa@example.it",
+      "firstName": "Utente",
+      "lastName": "Alfa",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["ICTIPZS/mailpit-progetto-alfa", "ICTIPZS/Domain Users"]
+    },
+    {
+      "username": "beta",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "beta@example.it",
+      "firstName": "Utente",
+      "lastName": "Beta",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["ICTIPZS/mailpit-progetto-beta", "ICTIPZS/Domain Users"]
+    },
+    {
+      "username": "both",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "both@example.it",
+      "firstName": "Utente",
+      "lastName": "Multiprogetto",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": [
+        "ICTIPZS/mailpit-progetto-alfa",
+        "ICTIPZS/mailpit-progetto-beta",
+        "ICTIPZS/Domain Users"
+      ]
+    },
+    {
+      "username": "admin1",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "admin1@example.it",
+      "firstName": "Amministratore",
+      "lastName": "Mailpit",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["ICTIPZS/mailpit-admin", "ICTIPZS/Domain Users"]
+    },
+    {
+      "username": "nessuno",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "nessuno@example.it",
+      "firstName": "Senza",
+      "lastName": "Ruolo",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["ICTIPZS/Domain Users"]
+    }
+  ]
+}
