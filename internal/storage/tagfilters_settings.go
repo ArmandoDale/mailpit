@@ -13,9 +13,15 @@ import (
 const runtimeTagFilterSettingKey = "TagFilters"
 
 // TagFilterRule stores a tag rule used for automatic tagging.
+//
+// Type and Field are optional and absent from rules written before regex
+// support: an empty Type means the original search-syntax behaviour, so
+// existing saved rules keep working untouched.
 type TagFilterRule struct {
 	Match string   `json:"match"`
 	Tags  []string `json:"tags"`
+	Type  string   `json:"type,omitempty"`
+	Field string   `json:"field,omitempty"`
 }
 
 // GetRuntimeTagFilters returns runtime tag filter rules configured via the UI/API.
@@ -60,10 +66,19 @@ func normalizeTagFilterRules(rules []TagFilterRule) []TagFilterRule {
 			continue
 		}
 
+		ruleType := NormaliseRuleType(r.Type)
+
 		tags := []string{}
 		seen := map[string]struct{}{}
 		for _, t := range r.Tags {
+			// Regex tags are templates that may contain capture-group
+			// references, so they are only trimmed here and validated after
+			// expansion against a real message.
 			cleaned := tools.CleanTag(t)
+			if ruleType == TagRuleRegex {
+				cleaned = strings.TrimSpace(t)
+			}
+
 			if cleaned == "" {
 				continue
 			}
@@ -80,7 +95,19 @@ func normalizeTagFilterRules(rules []TagFilterRule) []TagFilterRule {
 			continue
 		}
 
-		normalized = append(normalized, TagFilterRule{Match: match, Tags: tags})
+		rule := TagFilterRule{Match: match, Tags: tags, Type: ruleType}
+
+		if ruleType == TagRuleRegex {
+			// Reject an invalid expression at save time rather than letting
+			// it fail silently on every incoming message.
+			if _, ok := compileRegexRule(match); !ok {
+				continue
+			}
+
+			rule.Field = NormaliseRuleField(r.Field)
+		}
+
+		normalized = append(normalized, rule)
 	}
 
 	return normalized
@@ -141,11 +168,12 @@ func ApplyTagFiltersToAll() (int, error) {
 		if added {
 			updated++
 			// Broadcast individual message update so the UI refreshes without a manual reload
+			tags := getMessageTags(id)
 			d := struct {
 				ID   string
 				Tags []string
-			}{ID: id, Tags: getMessageTags(id)}
-			websockets.Broadcast("update", d)
+			}{ID: id, Tags: tags}
+			websockets.BroadcastMessage("update", d, tags)
 		}
 	}
 

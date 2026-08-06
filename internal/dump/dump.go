@@ -15,6 +15,7 @@ import (
 
 	"github.com/axllent/mailpit/config"
 	"github.com/axllent/mailpit/internal/logger"
+	"github.com/axllent/mailpit/internal/scope"
 	"github.com/axllent/mailpit/internal/storage"
 	"github.com/axllent/mailpit/internal/tools"
 	"github.com/axllent/mailpit/server/apiv1"
@@ -136,7 +137,7 @@ func loadIDs() error {
 
 		start := 0
 		for {
-			page, err := storage.List(start, 0, pageSize)
+			page, err := storage.List(start, 0, pageSize, scope.Unrestricted())
 			if err != nil {
 				return err
 			}

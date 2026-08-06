@@ -24,6 +24,9 @@ export const mailbox = reactive({
 	count: 0, // total in mailbox or search
 	messages: [], // current messages
 	tags: [], // all tags
+	// signed-in user and what they are allowed to see; enabled=false means
+	// authentication is not configured and the UI behaves as upstream
+	session: { enabled: false, authenticated: false, admin: false, username: "", tags: [] },
 	selected: [], // currently selected
 	connected: false, // websocket connection
 	searching: false, // current search, false for none

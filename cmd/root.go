@@ -48,6 +48,10 @@ Documentation:
 			go prometheus.StartSeparateServer()
 		}
 
+		// Bring up authentication before serving: enabling it after the
+		// listener is up would leave a window where the mailbox is open.
+		initOIDC()
+
 		go server.Listen()
 
 		if err := smtpd.Listen(); err != nil {
@@ -98,6 +102,9 @@ func init() {
 	rootCmd.Flags().StringVar(&logger.LogFile, "log-file", logger.LogFile, "Log output to file instead of stdout")
 	rootCmd.Flags().BoolVarP(&logger.QuietLogging, "quiet", "q", logger.QuietLogging, "Quiet logging (errors only)")
 	rootCmd.Flags().BoolVarP(&logger.VerboseLogging, "verbose", "v", logger.VerboseLogging, "Verbose logging")
+
+	// OIDC authentication (optional; without an issuer nothing changes)
+	registerOIDCFlags(rootCmd)
 
 	// Web UI / API
 	rootCmd.Flags().StringVarP(&config.HTTPListen, "listen", "l", config.HTTPListen, "HTTP bind interface & port for UI")

@@ -12,6 +12,7 @@ import (
 
 	"github.com/araddon/dateparse"
 	"github.com/axllent/mailpit/internal/logger"
+	"github.com/axllent/mailpit/internal/scope"
 	"github.com/axllent/mailpit/internal/tools"
 	"github.com/axllent/mailpit/server/websockets"
 	"github.com/leporo/sqlf"
@@ -21,7 +22,7 @@ import (
 // The search is broken up by segments (exact phrases can be quoted), and interprets specific terms such as:
 // is:read, is:unread, has:attachment, to:<term>, from:<term> & subject:<term>
 // Negative searches also also included by prefixing the search term with a `-` or `!`
-func Search(search, timezone string, start int, beforeTS int64, limit int) ([]MessageSummary, int, error) {
+func Search(search, timezone string, start int, beforeTS int64, limit int, sc scope.Scope) ([]MessageSummary, int, error) {
 	results := []MessageSummary{}
 	allResults := []MessageSummary{}
 	tsStart := time.Now()
@@ -30,7 +31,7 @@ func Search(search, timezone string, start int, beforeTS int64, limit int) ([]Me
 		limit = 50
 	}
 
-	q := searchQueryBuilder(search, timezone)
+	q := searchQueryBuilder(search, timezone, sc)
 
 	if beforeTS > 0 {
 		q = q.Where(`Created < ?`, beforeTS)
@@ -110,10 +111,10 @@ func Search(search, timezone string, start int, beforeTS int64, limit int) ([]Me
 
 // SearchUnreadCount returns the number of unread messages matching a search.
 // This is run one at a time to allow connected browsers to be updated.
-func SearchUnreadCount(search, timezone string, beforeTS int64) (int64, error) {
+func SearchUnreadCount(search, timezone string, beforeTS int64, sc scope.Scope) (int64, error) {
 	tsStart := time.Now()
 
-	q := searchQueryBuilder(search, timezone)
+	q := searchQueryBuilder(search, timezone, sc)
 
 	if beforeTS > 0 {
 		q = q.Where(`Created < ?`, beforeTS)
@@ -145,8 +146,8 @@ func SearchUnreadCount(search, timezone string, beforeTS int64) (int64, error) {
 // The search is broken up by segments (exact phrases can be quoted), and interprets specific terms such as:
 // is:read, is:unread, has:attachment, to:<term>, from:<term> & subject:<term>
 // Negative searches also also included by prefixing the search term with a `-` or `!`
-func DeleteSearch(search, timezone string) error {
-	q := searchQueryBuilder(search, timezone)
+func DeleteSearch(search, timezone string, sc scope.Scope) error {
+	q := searchQueryBuilder(search, timezone, sc)
 
 	ids := []string{}
 	deleteSize := uint64(0)
@@ -266,8 +267,8 @@ func DeleteSearch(search, timezone string) error {
 }
 
 // SetSearchReadStatus marks all messages matching the search as read or unread
-func SetSearchReadStatus(search, timezone string, read bool) error {
-	q := searchQueryBuilder(search, timezone).Where("Read = ?", !read)
+func SetSearchReadStatus(search, timezone string, read bool, sc scope.Scope) error {
+	q := searchQueryBuilder(search, timezone, sc).Where("Read = ?", !read)
 
 	ids := []string{}
 
@@ -307,7 +308,7 @@ func SetSearchReadStatus(search, timezone string, read bool) error {
 }
 
 // SearchParser returns the SQL syntax for the database search based on the search arguments
-func searchQueryBuilder(searchString, timezone string) *sqlf.Stmt {
+func searchQueryBuilder(searchString, timezone string, sc scope.Scope) *sqlf.Stmt {
 	// group strings with quotes as a single argument and remove quotes
 	args := tools.ArgsParser(searchString)
 
@@ -330,6 +331,11 @@ func searchQueryBuilder(searchString, timezone string) *sqlf.Stmt {
 			IFNULL(json_extract(Metadata, '$.ReplyTo'), '{}') as ReplyToJSON
 		`).
 		OrderBy("m.Created DESC")
+
+	// Restrict visibility before any user-supplied term is parsed. Every
+	// search-based read and delete funnels through here, so this is the single
+	// place the project isolation is enforced for them.
+	applyScope(q, sc)
 
 	for _, w := range args {
 		if cleanString(w) == "" {

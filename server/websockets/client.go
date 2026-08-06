@@ -11,6 +11,7 @@ import (
 	"github.com/axllent/mailpit/config"
 	"github.com/axllent/mailpit/internal/auth"
 	"github.com/axllent/mailpit/internal/logger"
+	"github.com/axllent/mailpit/internal/scope"
 	"github.com/gorilla/websocket"
 )
 
@@ -49,6 +50,9 @@ type Client struct {
 
 	// Buffered channel of outbound messages.
 	send chan *websocket.PreparedMessage
+
+	// Scope limits which message notifications this client receives.
+	Scope scope.Scope
 }
 
 // ReadPump is used here solely to monitor the connection, not to actually receive messages.
@@ -125,7 +129,7 @@ func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &Client{hub: hub, conn: conn, send: make(chan *websocket.PreparedMessage, 256)}
+	client := &Client{hub: hub, conn: conn, send: make(chan *websocket.PreparedMessage, 256), Scope: scope.FromRequest(r)}
 	client.hub.register <- client
 
 	// Allow collection of memory referenced by the caller by doing all work in new goroutines.

@@ -92,6 +92,8 @@ export default {
 					this.tagFilters = (response.data || []).map((r) => ({
 						match: r.match || "",
 						tags: (r.tags || []).join(", "),
+						type: r.type || "search",
+						field: r.field || "to",
 					}));
 					if (this.tagFilters.length === 0) {
 						this.addTagFilter();
@@ -110,6 +112,8 @@ export default {
 			this.tagFilters.push({
 				match: "",
 				tags: "",
+				type: "search",
+				field: "to",
 			});
 		},
 
@@ -135,7 +139,9 @@ export default {
 							.split(",")
 							.map((t) => t.trim())
 							.filter((t) => t !== "");
-						return { match, tags };
+						const type = r.type === "regex" ? "regex" : "search";
+						// field is only meaningful for regex rules
+						return type === "regex" ? { match, tags, type, field: r.field || "to" } : { match, tags, type };
 					})
 					.filter((r) => r.match !== "" && r.tags.length > 0),
 			};
@@ -143,6 +149,8 @@ export default {
 			this.put(this.resolve("/api/v1/tag-filters"), payload, (response) => {
 				this.tagFilters = (response.data || []).map((r) => ({
 					match: r.match || "",
+					type: r.type || "search",
+					field: r.field || "to",
 					tags: (r.tags || []).join(", "),
 				}));
 				if (this.tagFilters.length === 0) {
@@ -424,31 +432,67 @@ export default {
 						>
 							<div class="my-3">
 								<div class="form-text mb-3">
-									Configure runtime auto-tagging rules. Each rule applies tags when the search match
-									matches a new message (for example: <code>subject:invoice</code>,
-									<code>from:noreply@example.com</code>, or plain text).
+									Regole di auto-tagging applicate ai messaggi in arrivo.
+									<br />
+									<strong>Ricerca</strong>: sintassi di ricerca Mailpit, es.
+									<code>subject:invoice</code> o <code>from:noreply@example.com</code>. Cerca
+									sottostringhe.
+									<br />
+									<strong>Regex</strong>: espressione regolare su un campo preciso, es.
+									<code>@dev\.it$</code> sul destinatario. Il tag può usare i gruppi di cattura:
+									con <code>@([a-z0-9-]+)\.dev\.it$</code> e tag <code>$1</code> ogni progetto
+									riceve il proprio tag con una sola regola.
 								</div>
 								<div
 									v-for="(rule, index) in tagFilters"
 									:key="'tag-filter-' + index"
 									class="border rounded p-3 mb-2"
 								>
+									<div class="row g-2 mb-2">
+										<div class="col-sm-4">
+											<label class="form-label">Tipo</label>
+											<select v-model="rule.type" class="form-select">
+												<option value="search">Ricerca</option>
+												<option value="regex">Regex</option>
+											</select>
+										</div>
+										<div v-if="rule.type === 'regex'" class="col-sm-4">
+											<label class="form-label">Campo</label>
+											<select v-model="rule.field" class="form-select">
+												<option value="to">Destinatario (To)</option>
+												<option value="from">Mittente (From)</option>
+												<option value="cc">Cc</option>
+												<option value="bcc">Bcc</option>
+												<option value="subject">Oggetto</option>
+												<option value="any">Qualsiasi</option>
+											</select>
+										</div>
+									</div>
 									<div class="mb-2">
 										<label class="form-label">Match</label>
 										<input
 											v-model="rule.match"
 											type="text"
 											class="form-control"
-											placeholder='subject:invoice or "exact phrase"'
+											:placeholder="
+												rule.type === 'regex'
+													? '@dev\.it$'
+													: 'subject:invoice or &quot;exact phrase&quot;'
+											"
 										/>
 									</div>
 									<div class="mb-2">
-										<label class="form-label">Tags (comma separated)</label>
+										<label class="form-label">
+											Tag (separati da virgola)
+											<span v-if="rule.type === 'regex'" class="text-muted small">
+												— usa $1, $2 per i gruppi di cattura
+											</span>
+										</label>
 										<input
 											v-model="rule.tags"
 											type="text"
 											class="form-control"
-											placeholder="Billing, Priority"
+											:placeholder="rule.type === 'regex' ? 'DEV oppure $1' : 'Billing, Priority'"
 										/>
 									</div>
 									<button class="btn btn-sm btn-outline-danger" @click="removeTagFilter(index)">

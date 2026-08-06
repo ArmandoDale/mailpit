@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/axllent/mailpit/internal/scope"
 	"github.com/axllent/mailpit/internal/storage"
 	"github.com/axllent/mailpit/internal/tools"
 )
@@ -58,13 +59,13 @@ func GetMessages(w http.ResponseWriter, r *http.Request) {
 
 	start, beforeTS, limit := getStartLimit(r)
 
-	messages, err := storage.List(start, beforeTS, limit)
+	messages, err := storage.List(start, beforeTS, limit, scope.FromRequest(r))
 	if err != nil {
 		httpError(w, err.Error())
 		return
 	}
 
-	stats := storage.StatsGet()
+	stats := storage.StatsGet(scope.FromRequest(r))
 
 	var res MessagesSummary
 
@@ -127,26 +128,25 @@ func SetReadStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if search != "" {
-		err := storage.SetSearchReadStatus(search, r.URL.Query().Get("tz"), data.Read)
+		err := storage.SetSearchReadStatus(search, r.URL.Query().Get("tz"), data.Read, scope.FromRequest(r))
 		if err != nil {
 			httpError(w, err.Error())
 			return
 		}
 	} else if len(ids) == 0 {
-		if data.Read {
-			err := storage.MarkAllRead()
-			if err != nil {
-				httpError(w, err.Error())
-				return
-			}
-		} else {
-			err := storage.MarkAllUnread()
-			if err != nil {
-				httpError(w, err.Error())
-				return
-			}
+		if err := storage.MarkAllReadInScope(data.Read, scope.FromRequest(r)); err != nil {
+			httpError(w, err.Error())
+			return
 		}
 	} else {
+		// IDs arrive in the request body, so the by-ID middleware never sees
+		// them: drop any that belong to another project.
+		ids, err = storage.FilterIDsInScope(ids, scope.FromRequest(r))
+		if err != nil {
+			httpError(w, err.Error())
+			return
+		}
+
 		if data.Read {
 			if err := storage.MarkRead(ids); err != nil {
 				httpError(w, err.Error())
@@ -190,12 +190,18 @@ func DeleteMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	err := decoder.Decode(&data)
 	if err != nil || len(data.IDs) == 0 {
-		if err := storage.DeleteAllMessages(); err != nil {
+		if err := storage.DeleteAllInScope(scope.FromRequest(r)); err != nil {
 			httpError(w, err.Error())
 			return
 		}
 	} else {
-		if err := storage.DeleteMessages(data.IDs); err != nil {
+		ids, err := storage.FilterIDsInScope(data.IDs, scope.FromRequest(r))
+		if err != nil {
+			httpError(w, err.Error())
+			return
+		}
+
+		if err := storage.DeleteMessages(ids); err != nil {
 			httpError(w, err.Error())
 			return
 		}
@@ -230,13 +236,13 @@ func Search(w http.ResponseWriter, r *http.Request) {
 
 	start, beforeTS, limit := getStartLimit(r)
 
-	messages, results, err := storage.Search(search, r.URL.Query().Get("tz"), start, beforeTS, limit)
+	messages, results, err := storage.Search(search, r.URL.Query().Get("tz"), start, beforeTS, limit, scope.FromRequest(r))
 	if err != nil {
 		httpError(w, err.Error())
 		return
 	}
 
-	stats := storage.StatsGet()
+	stats := storage.StatsGet(scope.FromRequest(r))
 
 	var res MessagesSummary
 
@@ -248,7 +254,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	res.Unread = stats.Unread
 	res.Tags = stats.Tags
 
-	unread, err := storage.SearchUnreadCount(search, r.URL.Query().Get("tz"), beforeTS)
+	unread, err := storage.SearchUnreadCount(search, r.URL.Query().Get("tz"), beforeTS, scope.FromRequest(r))
 	if err != nil {
 		httpError(w, err.Error())
 		return
@@ -285,7 +291,7 @@ func DeleteSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := storage.DeleteSearch(search, r.URL.Query().Get("tz")); err != nil {
+	if err := storage.DeleteSearch(search, r.URL.Query().Get("tz"), scope.FromRequest(r)); err != nil {
 		httpError(w, err.Error())
 		return
 	}

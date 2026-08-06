@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/axllent/mailpit/config"
+	"github.com/axllent/mailpit/internal/scope"
 	"github.com/axllent/mailpit/server/websockets"
 )
 
@@ -23,16 +24,16 @@ func BroadcastMailboxStats() {
 	go func() {
 		time.Sleep(250 * time.Millisecond)
 		bcStatsDelay = false
-		b := struct {
-			Total   uint64
-			Unread  uint64
-			Version string
-		}{
-			Total:   CountTotal(),
-			Unread:  CountUnread(),
-			Version: config.Version,
-		}
-
-		websockets.Broadcast("stats", b)
+		websockets.BroadcastPerScope("stats", func(sc scope.Scope) any {
+			return struct {
+				Total   uint64
+				Unread  uint64
+				Version string
+			}{
+				Total:   CountTotal(sc),
+				Unread:  CountUnread(sc),
+				Version: config.Version,
+			}
+		})
 	}()
 }

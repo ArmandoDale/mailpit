@@ -1,5 +1,6 @@
 <script>
 import AjaxLoader from "./AjaxLoader.vue";
+import AppUser from "./AppUser.vue";
 import Settings from "./AppSettings.vue";
 import CommonMixins from "../mixins/CommonMixins";
 import { mailbox } from "../stores/mailbox";
@@ -7,6 +8,7 @@ import { mailbox } from "../stores/mailbox";
 export default {
 	components: {
 		AjaxLoader,
+		AppUser,
 		Settings,
 	},
 
@@ -63,6 +65,8 @@ export default {
 
 <template>
 	<template v-if="!modals">
+		<AppUser />
+
 		<div class="bg-body ms-sm-n1 me-sm-n1 py-2 text-muted small about-mailpit">
 			<button class="text-muted btn btn-sm" @click="loadInfo()">
 				<i class="bi bi-info-circle-fill me-1"></i>

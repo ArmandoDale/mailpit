@@ -15,6 +15,7 @@ import (
 
 	"github.com/axllent/mailpit/config"
 	"github.com/axllent/mailpit/internal/logger"
+	"github.com/axllent/mailpit/internal/scope"
 	"github.com/klauspost/compress/zstd"
 	"github.com/leporo/sqlf"
 
@@ -191,11 +192,11 @@ func Ping() error {
 }
 
 // StatsGet returns the total/unread statistics for a mailbox
-func StatsGet() MailboxStats {
+func StatsGet(sc scope.Scope) MailboxStats {
 	var (
-		total  = CountTotal()
-		unread = CountUnread()
-		tags   = GetAllTags()
+		total  = CountTotal(sc)
+		unread = CountUnread(sc)
+		tags   = GetAllTags(sc)
 	)
 
 	dbLastAction = time.Now()
@@ -208,24 +209,30 @@ func StatsGet() MailboxStats {
 }
 
 // CountTotal returns the number of emails in the database
-func CountTotal() uint64 {
+func CountTotal(sc scope.Scope) uint64 {
 	var total float64 // use float64 for rqlite compatibility
 
-	_ = sqlf.From(tenant("mailbox")).
-		Select("COUNT(*)").To(&total).
-		QueryRowAndClose(context.TODO(), db)
+	q := sqlf.From(tenant("mailbox") + " m").
+		Select("COUNT(*)").To(&total)
+
+	applyScope(q, sc)
+
+	_ = q.QueryRowAndClose(context.TODO(), db)
 
 	return uint64(total)
 }
 
 // CountUnread returns the number of emails in the database that are unread.
-func CountUnread() uint64 {
+func CountUnread(sc scope.Scope) uint64 {
 	var total float64 // use float64 for rqlite compatibility
 
-	_ = sqlf.From(tenant("mailbox")).
+	q := sqlf.From(tenant("mailbox")+" m").
 		Select("COUNT(*)").To(&total).
-		Where("Read = ?", 0).
-		QueryRowAndClose(context.TODO(), db)
+		Where("Read = ?", 0)
+
+	applyScope(q, sc)
+
+	_ = q.QueryRowAndClose(context.TODO(), db)
 
 	return uint64(total)
 }

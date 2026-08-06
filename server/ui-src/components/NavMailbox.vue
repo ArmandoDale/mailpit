@@ -29,6 +29,18 @@ export default {
 		};
 	},
 
+	computed: {
+		// A project user's "delete all" only reaches their own mail, so the
+		// label must not promise more than it does.
+		scoped() {
+			return mailbox.session.enabled && mailbox.session.authenticated && !mailbox.session.admin;
+		},
+
+		deleteAllLabel() {
+			return this.scoped ? "Elimina le mie" : "Delete all";
+		},
+	},
+
 	methods: {
 		reloadInbox() {
 			const paginationParams = this.getPaginationParams();
@@ -114,7 +126,7 @@ export default {
 						@click="deleteAllMessages"
 					>
 						<i class="bi bi-trash-fill me-1 text-danger"></i>
-						Delete all
+						{{ deleteAllLabel }}
 					</button>
 					<button
 						v-else
@@ -124,7 +136,7 @@ export default {
 						:disabled="!mailbox.total"
 					>
 						<i class="bi bi-trash-fill me-1 text-danger"></i>
-						Delete all
+						{{ deleteAllLabel }}
 					</button>
 				</template>
 			</template>
@@ -174,7 +186,9 @@ export default {
 			<div class="modal-dialog">
 				<div class="modal-content">
 					<div class="modal-header">
-						<h5 id="DeleteAllModalLabel" class="modal-title">Delete all messages?</h5>
+						<h5 id="DeleteAllModalLabel" class="modal-title">
+							{{ scoped ? "Eliminare i messaggi visibili?" : "Delete all messages?" }}
+						</h5>
 						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 					</div>
 					<div class="modal-body">
@@ -182,6 +196,10 @@ export default {
 							v-if="mailbox.total > 1"
 							>s</span
 						>.
+						<span v-if="scoped" class="d-block mt-2 text-muted small">
+							Solo i messaggi dei tuoi progetti e quelli senza tag. Gli altri progetti non vengono
+							toccati.
+						</span>
 					</div>
 					<div class="modal-footer">
 						<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>

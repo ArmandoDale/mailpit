@@ -19,6 +19,7 @@ import (
 
 	"github.com/axllent/mailpit/config"
 	"github.com/axllent/mailpit/internal/logger"
+	"github.com/axllent/mailpit/internal/scope"
 	"github.com/axllent/mailpit/internal/shortuuid"
 	"github.com/axllent/mailpit/internal/tools"
 	"github.com/axllent/mailpit/server/webhook"
@@ -198,7 +199,7 @@ func Store(body *[]byte, username *string) (string, error) {
 	c.Tags = setTags
 	c.Snippet = snippet
 
-	websockets.Broadcast("new", c)
+	websockets.BroadcastMessage("new", c, setTags)
 	webhook.Send(c)
 
 	dbLastAction = time.Now()
@@ -212,13 +213,17 @@ func Store(body *[]byte, username *string) (string, error) {
 
 // List returns a subset of messages from the mailbox,
 // sorted latest to oldest
-func List(start int, beforeTS int64, limit int) ([]MessageSummary, error) {
+func List(start int, beforeTS int64, limit int, sc scope.Scope) ([]MessageSummary, error) {
 	results := []MessageSummary{}
 	tsStart := time.Now()
 
 	q := sqlf.From(tenant("mailbox") + " m").
 		Select(`m.Created, m.ID, m.MessageID, m.Subject, m.Metadata, m.Size, m.Attachments, m.Read, m.Snippet`).
 		OrderBy("m.Created DESC")
+
+	// List does not go through searchQueryBuilder, so it enforces the scope
+	// itself. Applied before the limit so pagination counts only visible rows.
+	applyScope(q, sc)
 
 	if limit > 0 {
 		q = q.Limit(limit).Offset(start)
@@ -540,12 +545,12 @@ func LatestID(r *http.Request) (string, error) {
 
 	search := strings.TrimSpace(r.URL.Query().Get("query"))
 	if search != "" {
-		messages, _, err = Search(search, r.URL.Query().Get("tz"), 0, 0, 1)
+		messages, _, err = Search(search, r.URL.Query().Get("tz"), 0, 0, 1, scope.FromRequest(r))
 		if err != nil {
 			return "", err
 		}
 	} else {
-		messages, err = List(0, 0, 1)
+		messages, err = List(0, 0, 1, scope.FromRequest(r))
 		if err != nil {
 			return "", err
 		}
@@ -599,12 +604,16 @@ func MarkRead(ids []string) error {
 		return err
 	}
 
+	// Read-status notifications name a message, so they are scoped like any
+	// other per-message event. Tags are fetched in one batch query.
+	updatedTags := getTagsForIDs(toUpdate)
+
 	for _, id := range toUpdate {
 		logger.Log().Debugf("[db] marked message %s as read", id)
-		websockets.Broadcast("update", struct {
+		websockets.BroadcastMessage("update", struct {
 			ID   string
 			Read bool
-		}{ID: id, Read: true})
+		}{ID: id, Read: true}, updatedTags[id])
 	}
 
 	BroadcastMailboxStats()
@@ -656,12 +665,16 @@ func MarkUnread(ids []string) error {
 
 	dbLastAction = time.Now()
 
+	// Read-status notifications name a message, so they are scoped like any
+	// other per-message event. Tags are fetched in one batch query.
+	updatedTags := getTagsForIDs(toUpdate)
+
 	for _, id := range toUpdate {
 		logger.Log().Debugf("[db] marked message %s as unread", id)
-		websockets.Broadcast("update", struct {
+		websockets.BroadcastMessage("update", struct {
 			ID   string
 			Read bool
-		}{ID: id, Read: false})
+		}{ID: id, Read: false}, updatedTags[id])
 	}
 
 	BroadcastMailboxStats()
@@ -673,7 +686,7 @@ func MarkUnread(ids []string) error {
 func MarkAllRead() error {
 	var (
 		start = time.Now()
-		total = CountUnread()
+		total = CountUnread(scope.Unrestricted())
 	)
 
 	_, err := sqlf.Update(tenant("mailbox")).

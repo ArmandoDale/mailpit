@@ -213,6 +213,13 @@ func apiRoutes() *http.ServeMux {
 	r.HandleFunc("GET "+config.Webroot+"api/v1/chaos", middleWareFunc(apiv1.GetChaos))
 	r.HandleFunc("PUT "+config.Webroot+"api/v1/chaos", middleWareFunc(apiv1.SetChaos))
 
+	// Session routes. They sit under the auth/ prefix, which
+	// authenticateSession lets through without a session.
+	r.HandleFunc("GET "+config.Webroot+"auth/login", middleWareFunc(loginHandler))
+	r.HandleFunc("GET "+config.Webroot+"auth/callback", middleWareFunc(callbackHandler))
+	r.HandleFunc("GET "+config.Webroot+"auth/logout", middleWareFunc(logoutHandler))
+	r.HandleFunc("GET "+config.Webroot+"auth/session", middleWareFunc(sessionInfoHandler))
+
 	// Prometheus metrics (if enabled and using existing server)
 	if prometheus.GetMode() == "integrated" {
 		r.HandleFunc("GET "+config.Webroot+"metrics", middleWareFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -348,6 +355,22 @@ func middleWareFunc(fn http.HandlerFunc) http.HandlerFunc {
 				basicAuthResponse(w)
 				return
 			}
+		}
+
+		// Resolve the session cookie and attach the caller's scope to the
+		// request. Runs before any handler so the scope is available to all
+		// of them, including the WebSocket upgrade below.
+		if !isCORSOptionsRequest {
+			var ok bool
+			if r, ok = authenticateSession(w, r); !ok {
+				return
+			}
+		}
+
+		// Enforce per-message visibility centrally. The by-ID routes bypass
+		// searchQueryBuilder, so this is where they are covered.
+		if !isCORSOptionsRequest && !enforceMessageScope(w, r) {
+			return
 		}
 
 		// WebSocket upgrade requests must not be wrapped in a gzip writer:

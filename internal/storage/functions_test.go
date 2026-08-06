@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"github.com/axllent/mailpit/internal/scope"
 	"os"
 	"testing"
 
@@ -58,7 +59,7 @@ func assertEqual(t *testing.T, a any, b any, message string) {
 }
 
 func assertEqualStats(t *testing.T, total int, unread int) {
-	s := StatsGet()
+	s := StatsGet(scope.Unrestricted())
 	if uint64(total) != s.Total {
 		t.Fatalf("Incorrect total mailbox stats: \"%v\" != \"%v\"", total, s.Total)
 	}

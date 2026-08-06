@@ -11,6 +11,7 @@ import (
 
 	"github.com/axllent/mailpit/config"
 	"github.com/axllent/mailpit/internal/logger"
+	"github.com/axllent/mailpit/internal/scope"
 	"github.com/axllent/mailpit/internal/tools"
 	"github.com/axllent/mailpit/server/websockets"
 	"github.com/leporo/sqlf"
@@ -161,7 +162,7 @@ func deleteMessageTag(id, name string) error {
 }
 
 // GetAllTags returns all used tags
-func GetAllTags() []string {
+func GetAllTags(sc scope.Scope) []string {
 	var tags = []string{}
 	var name string
 
@@ -170,7 +171,12 @@ func GetAllTags() []string {
 		From(tenant("tags")).To(&name).
 		OrderBy("Name").
 		QueryAndClose(context.TODO(), db, func(_ *sql.Rows) {
-			tags = append(tags, name)
+			// The tag list is the list of project names, so it is filtered
+			// like message content: a project user must not learn which other
+			// projects exist.
+			if sc.AllowsTags([]string{name}) {
+				tags = append(tags, name)
+			}
 		}); err != nil {
 		logger.Log().Errorf("[db] %s", err.Error())
 	}
@@ -397,6 +403,12 @@ func getTagsForIDs(ids []string) map[string][]string {
 	}
 
 	return result
+}
+
+// MessageTags returns the tags currently on a message. Callers that are about
+// to overwrite them need to know which ones they would be removing.
+func MessageTags(id string) []string {
+	return getMessageTags(id)
 }
 
 // Get message tags from the database for a given database ID

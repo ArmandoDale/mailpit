@@ -8,6 +8,7 @@ import (
 
 	"github.com/axllent/mailpit/internal/auth"
 	"github.com/axllent/mailpit/internal/logger"
+	"github.com/axllent/mailpit/internal/scope"
 	"github.com/axllent/mailpit/internal/storage"
 	"github.com/axllent/mailpit/server/websockets"
 )
@@ -35,7 +36,7 @@ func sendData(c net.Conn, m string) {
 // Get the latest 100 messages
 func getMessages() ([]message, error) {
 	messages := []message{}
-	list, err := storage.List(0, 0, 100)
+	list, err := storage.List(0, 0, 100, scope.Unrestricted())
 	if err != nil {
 		return messages, err
 	}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/axllent/mailpit/config"
 	"github.com/axllent/mailpit/internal/logger"
+	"github.com/axllent/mailpit/internal/scope"
 	"github.com/axllent/mailpit/internal/storage"
 	"github.com/axllent/mailpit/internal/tools"
 )
@@ -131,8 +132,8 @@ func Load(detectLatestVersion bool) AppInformation {
 
 	info.Database = config.Database
 	info.DatabaseSize = storage.DbSize()
-	info.Messages = storage.CountTotal()
-	info.Unread = storage.CountUnread()
+	info.Messages = storage.CountTotal(scope.Unrestricted())
+	info.Unread = storage.CountUnread(scope.Unrestricted())
 	info.Tags = storage.GetAllTagsCount()
 
 	return info

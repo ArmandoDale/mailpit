@@ -24,6 +24,11 @@ export default {
 	},
 
 	beforeMount() {
+		// who is signed in, and what they are allowed to see
+		this.get(this.resolve("/auth/session"), false, (response) => {
+			mailbox.session = response.data;
+		});
+
 		// load global config
 		this.get(this.resolve("/api/v1/webui"), false, (response) => {
 			mailbox.uiConfig = response.data;

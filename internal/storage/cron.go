@@ -9,6 +9,7 @@ import (
 
 	"github.com/axllent/mailpit/config"
 	"github.com/axllent/mailpit/internal/logger"
+	"github.com/axllent/mailpit/internal/scope"
 	"github.com/axllent/mailpit/server/websockets"
 	"github.com/leporo/sqlf"
 )
@@ -68,7 +69,7 @@ func pruneMessages() {
 	var size float64 // use float64 for rqlite compatibility
 
 	// prune using `--max` if set
-	if config.MaxMessages > 0 && CountTotal() > uint64(config.MaxMessages) {
+	if config.MaxMessages > 0 && CountTotal(scope.Unrestricted()) > uint64(config.MaxMessages) {
 		offset := config.MaxMessages
 		if config.DemoMode {
 			offset = 500

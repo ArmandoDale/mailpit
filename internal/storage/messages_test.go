@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"github.com/axllent/mailpit/internal/scope"
 	"os"
 	"testing"
 	"time"
@@ -23,7 +24,7 @@ func TestTextEmailInserts(t *testing.T) {
 		}
 	}
 
-	assertEqual(t, CountTotal(), uint64(testRuns), "Incorrect number of text emails stored")
+	assertEqual(t, CountTotal(scope.Unrestricted()), uint64(testRuns), "Incorrect number of text emails stored")
 
 	t.Logf("Inserted %d text emails in %s", testRuns, time.Since(start))
 
@@ -33,7 +34,7 @@ func TestTextEmailInserts(t *testing.T) {
 		t.Fail()
 	}
 
-	assertEqual(t, CountTotal(), uint64(0), "incorrect number of text emails deleted")
+	assertEqual(t, CountTotal(scope.Unrestricted()), uint64(0), "incorrect number of text emails deleted")
 
 	t.Logf("deleted %d text emails in %s", testRuns, time.Since(delStart))
 
@@ -61,7 +62,7 @@ func TestMimeEmailInserts(t *testing.T) {
 			}
 		}
 
-		assertEqual(t, CountTotal(), uint64(testRuns), "Incorrect number of mime emails stored")
+		assertEqual(t, CountTotal(scope.Unrestricted()), uint64(testRuns), "Incorrect number of mime emails stored")
 
 		t.Logf("Inserted %d text emails in %s", testRuns, time.Since(start))
 
@@ -71,7 +72,7 @@ func TestMimeEmailInserts(t *testing.T) {
 			t.Fail()
 		}
 
-		assertEqual(t, CountTotal(), uint64(0), "incorrect number of mime emails deleted")
+		assertEqual(t, CountTotal(scope.Unrestricted()), uint64(0), "incorrect number of mime emails deleted")
 
 		t.Logf("Deleted %d mime emails in %s", testRuns, time.Since(delStart))
 
@@ -157,7 +158,7 @@ func TestMessageSummary(t *testing.T) {
 			t.Fail()
 		}
 
-		summaries, err := List(0, 0, 1)
+		summaries, err := List(0, 0, 1, scope.Unrestricted())
 		if err != nil {
 			t.Log("error ", err)
 			t.Fail()

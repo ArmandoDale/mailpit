@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"github.com/axllent/mailpit/internal/scope"
 	"slices"
 	"strings"
 	"testing"
@@ -118,7 +119,7 @@ func TestTags(t *testing.T) {
 		}
 
 		// Check deleted message tags also prune the tags database
-		allTags := GetAllTags()
+		allTags := GetAllTags(scope.Unrestricted())
 		assertEqual(t, "", strings.Join(allTags, "|"), "Tags did not delete as expected")
 
 		if err := DeleteAllMessages(); err != nil {
