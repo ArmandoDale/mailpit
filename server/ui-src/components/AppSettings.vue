@@ -24,6 +24,19 @@ export default {
 		};
 	},
 
+	computed: {
+		// Tag filter rules decide which project sees which message, so the API
+		// restricts them to administrators. Showing the tab to everyone else
+		// offered a control that silently did nothing: the mixin swallows the
+		// 403, so saving simply had no effect and no explanation.
+		//
+		// With authentication disabled the server reports admin, so this keeps
+		// upstream behaviour untouched.
+		canManageTagFilters() {
+			return mailbox.session.admin;
+		},
+	},
+
 	watch: {
 		theme(v) {
 			if (v === "auto") {
@@ -258,7 +271,7 @@ export default {
 								Chaos
 							</button>
 						</li>
-						<li class="nav-item" role="presentation">
+						<li v-if="canManageTagFilters" class="nav-item" role="presentation">
 							<button
 								id="tag-filters-tab"
 								class="nav-link"
@@ -424,6 +437,7 @@ export default {
 						</div>
 
 						<div
+							v-if="canManageTagFilters"
 							id="tag-filters-tab-pane"
 							class="tab-pane fade"
 							role="tabpanel"
