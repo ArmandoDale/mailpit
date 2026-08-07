@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/axllent/mailpit/config"
+	"github.com/axllent/mailpit/internal/apitoken"
 	"github.com/axllent/mailpit/internal/logger"
 	"github.com/axllent/mailpit/internal/scope"
 	"github.com/axllent/mailpit/internal/session"
@@ -15,6 +16,10 @@ import (
 // EnableSessions is called, and while nil Mailpit behaves exactly as upstream:
 // no session is required and every request is unrestricted.
 var Sessions *session.Store
+
+// APITokens holds the configured service tokens for non-interactive callers.
+// Nil when none are configured, in which case only sessions authenticate.
+var APITokens *apitoken.Store
 
 // sessionPruneInterval is how often expired sessions are swept. Get already
 // discards them lazily, so this only bounds memory.
@@ -80,6 +85,22 @@ func authenticateSession(w http.ResponseWriter, r *http.Request) (*http.Request,
 
 	if isPublicPath(r) {
 		return r, true
+	}
+
+	// A bearer token is the non-interactive way in. It is checked before the
+	// cookie because the two never travel together: browsers do not send
+	// Authorization headers on their own, which is also why a token request
+	// needs no CSRF check.
+	if apitoken.Presented(r) {
+		t, ok := APITokens.FromRequest(r)
+		if !ok {
+			logger.Log().Warnf("[apitoken] rejected an unrecognised token from %s", r.RemoteAddr)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+
+			return r, false
+		}
+
+		return r.WithContext(scope.NewContext(r.Context(), t.Scope)), true
 	}
 
 	s := Sessions.FromRequest(r)

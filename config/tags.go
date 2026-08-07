@@ -57,7 +57,7 @@ func loadTagsFromConfig(c string) error {
 
 	for _, t := range conf.Filters {
 		tags := strings.Split(t.Tags, ",")
-		TagFilters = append(TagFilters, autoTag{Match: t.Match, Tags: tags})
+		TagFilters = append(TagFilters, AutoTag{Match: t.Match, Tags: tags})
 	}
 
 	logger.Log().Debugf("[tags] loaded %s from config %s", tools.Plural(len(conf.Filters), "tag filter", "tag filters"), c)
@@ -77,7 +77,7 @@ func loadTagsFromArgs(c string) error {
 		if len(t) > 1 {
 			match := strings.TrimSpace(strings.ToLower(strings.Join(t[1:], "=")))
 			tags := strings.Split(t[0], ",")
-			TagFilters = append(TagFilters, autoTag{Match: match, Tags: tags})
+			TagFilters = append(TagFilters, AutoTag{Match: match, Tags: tags})
 		} else {
 			return fmt.Errorf("[tag] error parsing tags (%s)", a)
 		}

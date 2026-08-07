@@ -15,6 +15,11 @@ export default {
 			chaosConfig: false,
 			chaosUpdated: false,
 			tagFilters: [],
+			// Rules from --tags-config. Shown but never edited: the file
+			// belongs to the deployment, and tagging uses them too, so an
+			// administrator who cannot see them cannot explain why a message
+			// carries a given tag.
+			configTagFilters: [],
 			tagFiltersLoading: false,
 			tagFiltersSaving: false,
 			tagFiltersLoaded: false,
@@ -102,12 +107,8 @@ export default {
 				this.resolve("/api/v1/tag-filters"),
 				null,
 				(response) => {
-					this.tagFilters = (response.data || []).map((r) => ({
-						match: r.match || "",
-						tags: (r.tags || []).join(", "),
-						type: r.type || "search",
-						field: r.field || "to",
-					}));
+					this.tagFilters = this.mapTagFilters(response.data?.Filters);
+					this.configTagFilters = this.mapTagFilters(response.data?.ConfigFilters);
 					if (this.tagFilters.length === 0) {
 						this.addTagFilter();
 					}
@@ -119,6 +120,17 @@ export default {
 				},
 				true,
 			);
+		},
+
+		// mapTagFilters turns the API shape into the one the form edits, with
+		// tags as a single comma-separated string.
+		mapTagFilters(rules) {
+			return (rules || []).map((r) => ({
+				match: r.match || "",
+				tags: (r.tags || []).join(", "),
+				type: r.type || "search",
+				field: r.field || "to",
+			}));
 		},
 
 		addTagFilter() {
@@ -160,12 +172,8 @@ export default {
 			};
 
 			this.put(this.resolve("/api/v1/tag-filters"), payload, (response) => {
-				this.tagFilters = (response.data || []).map((r) => ({
-					match: r.match || "",
-					type: r.type || "search",
-					field: r.field || "to",
-					tags: (r.tags || []).join(", "),
-				}));
+				this.tagFilters = this.mapTagFilters(response.data?.Filters);
+				this.configTagFilters = this.mapTagFilters(response.data?.ConfigFilters);
 				if (this.tagFilters.length === 0) {
 					this.addTagFilter();
 				}
@@ -457,6 +465,37 @@ export default {
 									con <code>@([a-z0-9-]+)\.dev\.it$</code> e tag <code>$1</code> ogni progetto
 									riceve il proprio tag con una sola regola.
 								</div>
+
+								<div v-if="configTagFilters.length" class="mb-4">
+									<h6 class="mb-2">Regole dal file di configurazione</h6>
+									<div class="form-text mb-2">
+										Definite nel file passato con <code>--tags-config</code>, quindi non
+										modificabili da qui. Sono attive come le altre: taggano i messaggi in arrivo e
+										vengono usate anche da &laquo;Applica agli esistenti&raquo;.
+									</div>
+									<div class="table-responsive">
+										<table class="table table-sm align-middle mb-0">
+											<thead>
+												<tr>
+													<th scope="col">Match</th>
+													<th scope="col">Tag</th>
+												</tr>
+											</thead>
+											<tbody>
+												<tr
+													v-for="(rule, index) in configTagFilters"
+													:key="'config-tag-filter-' + index"
+												>
+													<td><code>{{ rule.match }}</code></td>
+													<td>{{ rule.tags }}</td>
+												</tr>
+											</tbody>
+										</table>
+									</div>
+								</div>
+
+								<h6 v-if="configTagFilters.length" class="mb-2">Regole modificabili</h6>
+
 								<div
 									v-for="(rule, index) in tagFilters"
 									:key="'tag-filter-' + index"

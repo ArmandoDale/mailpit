@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/axllent/mailpit/config"
 	"github.com/axllent/mailpit/internal/logger"
 	"github.com/axllent/mailpit/internal/tools"
 	"github.com/axllent/mailpit/server/websockets"
@@ -22,6 +23,31 @@ type TagFilterRule struct {
 	Tags  []string `json:"tags"`
 	Type  string   `json:"type,omitempty"`
 	Field string   `json:"field,omitempty"`
+}
+
+// GetConfigTagFilters returns the rules that come from the configuration file
+// (--tags-config / MP_TAGS_CONFIG), which LoadTagFilters merges with the
+// runtime ones.
+//
+// They exist to be shown, never edited: the file belongs to whoever runs the
+// deployment. Without this an administrator saw an empty panel while messages
+// arrived tagged, and "apply to existing" ran rules they had never been shown
+// — the merged list is what it applies. Question the panel could not answer:
+// "why does this message carry this tag?".
+//
+// Rules from the file are search rules: the YAML format has no type or field.
+func GetConfigTagFilters() []TagFilterRule {
+	rules := []TagFilterRule{}
+
+	for _, t := range config.TagFilters {
+		rules = append(rules, TagFilterRule{
+			Match: t.Match,
+			Tags:  t.Tags,
+			Type:  TagRuleSearch,
+		})
+	}
+
+	return rules
 }
 
 // GetRuntimeTagFilters returns runtime tag filter rules configured via the UI/API.

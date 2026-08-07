@@ -150,7 +150,7 @@ var (
 	TagsConfig string
 
 	// TagFilters are used to apply tags to new mail
-	TagFilters []autoTag
+	TagFilters []AutoTag
 
 	// TagsDisable accepts a comma-separated list of tag types to disable
 	// including x-tags & plus-addresses
@@ -241,8 +241,12 @@ var (
 	DemoMode = false
 )
 
-// AutoTag struct for auto-tagging
-type autoTag struct {
+// AutoTag struct for auto-tagging.
+//
+// Exported because TagFilters is: an exported slice of an unexported type can
+// be read by other packages but never built, which left the rules from the
+// configuration file impossible to construct in a test.
+type AutoTag struct {
 	Match string
 	Tags  []string
 }
@@ -583,7 +587,7 @@ func VerifyConfig() error {
 	}
 
 	// load tag filters & options
-	TagFilters = []autoTag{}
+	TagFilters = []AutoTag{}
 	if err := loadTagsFromArgs(CLITagsArg); err != nil {
 		return err
 	}

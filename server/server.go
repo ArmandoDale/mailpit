@@ -357,6 +357,12 @@ func middleWareFunc(fn http.HandlerFunc) http.HandlerFunc {
 			}
 		}
 
+		// Reject forged writes before the session is resolved: what makes them
+		// dangerous is precisely that the cookie would authenticate them.
+		if !isCORSOptionsRequest && !checkCSRF(w, r) {
+			return
+		}
+
 		// Resolve the session cookie and attach the caller's scope to the
 		// request. Runs before any handler so the scope is available to all
 		// of them, including the WebSocket upgrade below.
