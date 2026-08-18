@@ -11,7 +11,10 @@ their purpose, usage instructions, and known limitations.
 |------|------|-------------|
 | `internal/storage/tagfilters_settings.go` | **NEW** | Database persistence and bulk-apply for runtime tag filter rules |
 | `server/apiv1/tagfilters.go` | **NEW** | REST API endpoints for tag filter CRUD and apply-to-existing |
-| `internal/storage/tagfilters.go` | **MODIFIED** | `LoadTagFilters()` merges config-file rules with runtime (DB) rules |
+| `internal/storage/tagfilters_file.go` | **NEW** | Seeds runtime rules from the `--tags-config` file, and writes them back on every change |
+| `internal/storage/tagfilters.go` | **MODIFIED** | `LoadTagFilters()` applies the runtime (DB) rules and any `--tag` CLI rules |
+| `config/tags.go` | **MODIFIED** | Config-file rules are parsed into `TagsConfigFilters` and used as a seed, not applied directly |
+| `internal/storage/database.go` | **MODIFIED** | Seeding runs once at start-up, before the filters are loaded |
 | `server/server.go` | **MODIFIED** | Three new API routes registered |
 | `server/ui-src/components/AppSettings.vue` | **MODIFIED** | New "Tag filters" tab in the Settings modal |
 | `Dockerfile` | **MODIFIED** | Uses `-mod=vendor` + `vendor/` directory for offline/reliable builds |
@@ -105,7 +108,12 @@ for _, t := range GetRuntimeTagFilters() { allFilters = append(...) }
 // process merged list
 ```
 
-This is backward-compatible — existing config/CLI tag rules continue to work unchanged.
+`config.TagFilters` now holds only the rules given with the `--tag` CLI flag: rules from
+the YAML config file are parsed into `config.TagsConfigFilters` and seeded into the database
+instead, so that every rule the GUI applies is also a rule the GUI shows.
+
+This stays backward-compatible for the operator: a `--tags-config` file that worked before
+still produces the same tagging, with the rules now visible in the Settings modal.
 
 ---
 
@@ -231,6 +239,47 @@ The `match` field supports the full Mailpit search syntax:
 
 ---
 
+## Configuration File as the Source of Rules
+
+Runtime rules live in the database, in the `settings` table. That is what makes them
+editable without a restart — and it is also what makes them the only piece of an
+instance's configuration that a rebuild does not restore, because the message database
+is deliberately not backed up: messages are reproducible by re-running a test, but a
+tagging rule is a decision taken once per project and is not.
+
+An instance rebuilt from its versioned configuration alone came back up healthy,
+accepted mail, and silently stopped tagging it. The failure surfaced days later, on the
+first search by project tag.
+
+This fork therefore treats the `--tags-config` file as the versionable representation
+of the runtime rules:
+
+| Direction | When | What happens |
+|---|---|---|
+| File → database | Once, at the first start of an instance that has `--tags-config` set | The rules in the file are imported as runtime rules, visible and editable in the GUI |
+| Database → file | On every change to the rules | The file is rewritten atomically, so it always reflects the active rules |
+
+Two properties keep this from causing surprises:
+
+- **Seeding happens once.** A `TagFiltersSeeded` setting records that it has run. Deleting
+  every rule from the GUI is therefore permanent: the next restart does not bring them
+  back. After the first start the database is authoritative.
+- **A failed write never fails the save.** If the file cannot be written, the rule is
+  still stored, the error is logged, and a warning states that the rules exist only in
+  the database until the problem is fixed. A filesystem issue degrades versionability,
+  not the feature.
+
+The file keeps the exact format read by upstream Mailpit, so a file written here is still
+a valid `--tags-config` file, and one written by hand is still a valid seed.
+
+### Consequence for operations
+
+Backing up the message database is still unnecessary. Keep the `--tags-config` file
+alongside the rest of the versioned configuration, and a rebuilt instance recovers its
+tagging with no further action.
+
+---
+
 ## Known Limitations
 
 1. **Rules apply only to new messages by default.**
@@ -252,9 +301,11 @@ The `match` field supports the full Mailpit search syntax:
 5. **No rule testing / dry-run.**
    There is no preview of how many messages a rule would match before saving.
 
-6. **Config-file rules are read-only from the GUI.**
-   Rules defined via CLI (`--tag`) or YAML config are shown only on the backend.
-   They cannot be viewed, edited, or deleted from the Settings modal.
+6. **CLI rules (`--tag`) are not visible in the GUI.**
+   Rules defined with the `--tag` flag remain a separate, backend-only source, as in
+   upstream Mailpit. Rules from the YAML config file are no longer affected: they are
+   imported into the database at first start and are then visible and editable like
+   any other rule (see *Configuration file as the source of rules*).
 
 7. **`vendor/` directory required for Docker builds.**
    The modified Dockerfile uses `-mod=vendor`. If `vendor/` is missing, the Docker build

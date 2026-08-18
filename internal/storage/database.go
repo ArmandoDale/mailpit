@@ -136,6 +136,8 @@ func InitDB() error {
 		return err
 	}
 
+	seedTagFiltersFromFile()
+
 	LoadTagFilters()
 
 	dbLastAction = time.Now()

@@ -141,6 +141,7 @@ def invia(mittente, oggetto, allegato=False):
 
 REGOLA_FATTURE = {"match": "subject:Fattura", "tags": ["Fatturazione"]}
 REGOLA_ALLEGATI = {"match": "has:attachment", "tags": ["Con-allegato"]}
+REGOLA_CONTRATTI = {"match": "subject:Contratto", "tags": ["Da-file"]}
 
 
 def prove_runtime(binario, tmp):
@@ -212,27 +213,113 @@ def prove_runtime(binario, tmp):
         ferma(p)
 
 
+def leggi_file_regole(percorso):
+    """I match presenti nel file di configurazione, in ordine di comparsa."""
+    match = []
+    with open(percorso, encoding="utf-8") as f:
+        for riga in f:
+            riga = riga.strip()
+            if riga.startswith("- match:") or riga.startswith("match:"):
+                match.append(riga.split(":", 1)[1].strip().strip('"'))
+    return match
+
+
+def scrivi_file_regole(percorso, righe):
+    with open(percorso, "w", encoding="utf-8") as f:
+        f.write(righe)
+
+
 def prove_file_configurazione(binario, tmp):
-    """Regole da file: convivenza con quelle a runtime e loro invisibilita'."""
-    print("\nFase B - regole definite da file di configurazione\n")
-    yml = os.path.join(tmp, "tags.yaml")
-    with open(yml, "w", encoding="utf-8") as f:
-        f.write('filters:\n  - match: "subject:Contratto"\n    tags: "Da-file"\n')
+    """Il file come sorgente dichiarativa: semina, scrittura passante, ricostruzione."""
+    print("\nFase B - il file di configurazione come sorgente delle regole\n")
+
+    dir_conf = os.path.join(tmp, "conf")
+    os.makedirs(dir_conf, exist_ok=True)
+    yml = os.path.join(dir_conf, "tags.yaml")
+    scrivi_file_regole(
+        yml, 'filters:\n  - match: "subject:Contratto"\n    tags: "Da-file"\n')
 
     db = os.path.join(tmp, "prova-file.db")
     p = avvia(binario, db, extra=("--tags-config", yml))
     try:
-        invia("legale@dev.test.local", "Contratto quadro")
-        caso("PT-14", "la regola da file etichetta i messaggi in ingresso",
-             ["Da-file"], tag_di("Contratto quadro"))
-        caso("PT-15", "la regola da file non compare tra quelle gestite a runtime",
-             [], api("GET", "/api/v1/tag-filters"))
+        caso("PT-14", "le regole del file sono visibili tra quelle gestite a runtime",
+             [REGOLA_CONTRATTI], api("GET", "/api/v1/tag-filters"))
 
-        # una regola runtime convive con quella da file
+        invia("legale@dev.test.local", "Contratto quadro")
+        caso("PT-15", "la regola proveniente dal file etichetta i messaggi in ingresso",
+             ["Da-file"], tag_di("Contratto quadro"))
+
+        # una regola creata dal pannello si aggiunge a quella seminata
+        regole = api("GET", "/api/v1/tag-filters") + [REGOLA_FATTURE]
+        api("PUT", "/api/v1/tag-filters", {"Filters": regole})
+        caso("PT-16", "la regola creata a runtime e' scritta nel file di configurazione",
+             ["subject:Contratto", "subject:Fattura"], leggi_file_regole(yml))
+    finally:
+        ferma(p)
+
+    # riavvio sullo stesso database: la semina non si ripete
+    p = avvia(binario, db, extra=("--tags-config", yml))
+    try:
+        caso("PT-17", "al riavvio le regole non vengono seminate una seconda volta",
+             2, len(api("GET", "/api/v1/tag-filters")))
+    finally:
+        ferma(p)
+
+    print("\nFase C - ricostruzione dell'istanza dal solo file\n")
+
+    # database nuovo, file invariato: e' lo scenario del ripristino
+    db2 = os.path.join(tmp, "prova-ripristino.db")
+    p = avvia(binario, db2, extra=("--tags-config", yml))
+    try:
+        caso("PT-18", "un database nuovo riprende entrambe le regole dal file",
+             ["subject:Contratto", "subject:Fattura"],
+             [r["match"] for r in api("GET", "/api/v1/tag-filters")])
+
+        invia("fatturazione@dev.test.local", "Fattura di novembre")
+        caso("PT-19", "nell'istanza ricostruita la regola creata a suo tempo dal pannello etichetta",
+             ["Fatturazione"], tag_di("Fattura di novembre"))
+    finally:
+        ferma(p)
+
+    print("\nFase D - casi limite\n")
+
+    # l'eliminazione delle regole non deve essere annullata dal riavvio
+    db3 = os.path.join(tmp, "prova-svuotamento.db")
+    yml3 = os.path.join(dir_conf, "tags3.yaml")
+    scrivi_file_regole(
+        yml3, 'filters:\n  - match: "subject:Contratto"\n    tags: "Da-file"\n')
+
+    p = avvia(binario, db3, extra=("--tags-config", yml3))
+    try:
+        api("PUT", "/api/v1/tag-filters", {"Filters": []})
+    finally:
+        ferma(p)
+
+    p = avvia(binario, db3, extra=("--tags-config", yml3))
+    try:
+        caso("PT-20", "lo svuotamento delle regole non viene annullato dal riavvio",
+             [], api("GET", "/api/v1/tag-filters"))
+    finally:
+        ferma(p)
+
+    # file non scrivibile: la regola si salva comunque nel database
+    db4 = os.path.join(tmp, "prova-sola-lettura.db")
+    dir_conf4 = os.path.join(tmp, "conf-sola-lettura")
+    os.makedirs(dir_conf4, exist_ok=True)
+    yml4 = os.path.join(dir_conf4, "tags.yaml")
+    scrivi_file_regole(yml4, "filters: []\n")
+
+    p = avvia(binario, db4, extra=("--tags-config", yml4))
+    try:
+        # reso irraggiungibile dopo l'avvio: la scrittura passante fallira'
+        shutil.rmtree(dir_conf4, ignore_errors=True)
         api("PUT", "/api/v1/tag-filters", {"Filters": [REGOLA_FATTURE]})
-        invia("fatturazione@dev.test.local", "Fattura e Contratto allegati")
-        caso("PT-16", "le due sorgenti di regole coesistono sullo stesso messaggio",
-             ["Da-file", "Fatturazione"], tag_di("Fattura e Contratto allegati"))
+        caso("PT-21", "se il file non e' scrivibile la regola si salva comunque",
+             [REGOLA_FATTURE], api("GET", "/api/v1/tag-filters"))
+
+        invia("fatturazione@dev.test.local", "Fattura urgente")
+        caso("PT-22", "e resta operativa nonostante il file non aggiornato",
+             ["Fatturazione"], tag_di("Fattura urgente"))
     finally:
         ferma(p)
 

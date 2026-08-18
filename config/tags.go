@@ -28,7 +28,12 @@ type yamlTag struct {
 	Tags  string `yaml:"tags"`
 }
 
-// Load tags from a configuration from a file, if set
+// Load tags from a configuration from a file, if set.
+//
+// The rules are stored in TagsConfigFilters rather than TagFilters: they are not
+// applied directly, but seed the runtime rules held in the database on first
+// start. This keeps a single visible set of active rules in the web UI, and lets
+// the file act as the versionable representation of them.
 func loadTagsFromConfig(c string) error {
 	if c == "" {
 		return nil // not set, ignore
@@ -57,7 +62,7 @@ func loadTagsFromConfig(c string) error {
 
 	for _, t := range conf.Filters {
 		tags := strings.Split(t.Tags, ",")
-		TagFilters = append(TagFilters, autoTag{Match: t.Match, Tags: tags})
+		TagsConfigFilters = append(TagsConfigFilters, autoTag{Match: t.Match, Tags: tags})
 	}
 
 	logger.Log().Debugf("[tags] loaded %s from config %s", tools.Plural(len(conf.Filters), "tag filter", "tag filters"), c)

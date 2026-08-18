@@ -152,6 +152,12 @@ var (
 	// TagFilters are used to apply tags to new mail
 	TagFilters []autoTag
 
+	// TagsConfigFilters holds the tag filter rules parsed from the TagsConfig
+	// yaml file. They are not applied directly: they seed the runtime rules
+	// stored in the database on first start, so that every active rule is
+	// visible and editable in the web UI. See internal/storage/tagfilters_file.go
+	TagsConfigFilters []autoTag
+
 	// TagsDisable accepts a comma-separated list of tag types to disable
 	// including x-tags & plus-addresses
 	TagsDisable string
@@ -584,6 +590,7 @@ func VerifyConfig() error {
 
 	// load tag filters & options
 	TagFilters = []autoTag{}
+	TagsConfigFilters = []autoTag{}
 	if err := loadTagsFromArgs(CLITagsArg); err != nil {
 		return err
 	}

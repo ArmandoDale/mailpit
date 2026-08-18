@@ -48,6 +48,9 @@ func SetRuntimeTagFilters(rules []TagFilterRule) ([]TagFilterRule, error) {
 
 	LoadTagFilters()
 
+	// keep the versionable representation of the rules in step with the database
+	writeTagFiltersToFile(normalized)
+
 	return normalized, nil
 }
 

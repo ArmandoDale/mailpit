@@ -43,32 +43,61 @@ intercettare sia messaggi che non deve intercettare.
 | PT-12 | Messaggio ricevuto dopo la rinomina | Il tag con il nome vecchio viene ricreato | Effetto operativo di PT-11 |
 | PT-13 | Riavvio del servizio | Le regole salvate sono ancora presenti | Persistenza nel database |
 
-### Fase B — regole definite da file di configurazione
+### Fase B — il file di configurazione come sorgente delle regole
 
 | # | Caso | Risultato atteso | Verifica |
 |---|---|---|---|
-| PT-14 | Istanza avviata con `--tags-config` | I messaggi corrispondenti sono etichettati | La sorgente da file resta attiva |
-| PT-15 | Elenco delle regole gestite a runtime | La regola da file **non** compare | Limitazione nota 6 |
-| PT-16 | Regola da file e regola a runtime sullo stesso messaggio | Il messaggio riceve entrambi i tag | Coesistenza delle due sorgenti |
+| PT-14 | Istanza nuova avviata con `--tags-config` | Le regole del file compaiono tra quelle gestite a runtime | Semina del database dal file |
+| PT-15 | Messaggio corrispondente a una regola seminata | Il messaggio è etichettato | La sorgente da file resta efficace |
+| PT-16 | Regola creata dal pannello | Il file di configurazione contiene entrambe le regole | Scrittura passante |
+| PT-17 | Riavvio sullo stesso database | Le regole restano due | La semina non si ripete |
 
-**Perché PT-15 conta.** È il caso meno intuitivo del piano: l'amministratore che
-apre il pannello vede solo una parte delle regole attive, ma l'azione di
-applicazione retroattiva agisce sull'insieme completo. Non è un problema di
-sicurezza — il file di configurazione lo scrive chi gestisce il deployment — ma
-di diagnosi: senza saperlo, non si spiega da dove arrivi un tag. È la ragione per
-cui si raccomanda di adottare l'interfaccia come fonte unica delle regole attive.
+### Fase C — ricostruzione dell'istanza dal solo file
+
+| # | Caso | Risultato atteso | Verifica |
+|---|---|---|---|
+| PT-18 | Database nuovo, file di configurazione invariato | Entrambe le regole sono presenti | Ripristino del tagging senza backup del database |
+| PT-19 | Messaggio corrispondente alla regola creata a suo tempo dal pannello | Il messaggio è etichettato | La regola sopravvive alla perdita del database |
+
+### Fase D — casi limite
+
+| # | Caso | Risultato atteso | Verifica |
+|---|---|---|---|
+| PT-20 | Eliminazione di tutte le regole, poi riavvio | Le regole restano zero | L'eliminazione non è annullata da una nuova semina |
+| PT-21 | File non scrivibile al momento del salvataggio | La regola è comunque salvata | Il guasto sul file non rende inutilizzabile la funzionalità |
+| PT-22 | Messaggio in arrivo con file non aggiornato | Il messaggio è etichettato | Il servizio resta operativo, la sola copia versionabile è disallineata |
+
+**Perché la Fase C conta.** È il caso che giustifica l'intera evoluzione. Le
+regole di tagging sono l'unica informazione del database che non si rigenera
+ri-eseguendo un test: sono una decisione presa una volta per progetto. Con il
+database escluso dal ripristino, un'istanza ricostruita ripartiva sana e smetteva
+silenziosamente di etichettare, e il sintomo si manifestava giorni dopo, alla
+prima ricerca per tag. PT-18 e PT-19 provano che oggi non accade più.
+
+**Perché PT-20 e PT-21 contano.** Sono i due modi in cui una semina automatica
+può fare danno. PT-20 esclude che il file resusciti regole che un amministratore
+ha deliberatamente eliminato: la semina avviene una volta sola, e il database
+resta da quel momento la fonte autorevole. PT-21 esclude che un problema di
+filesystem si trasformi in un'indisponibilità della funzionalità: il salvataggio
+riesce, l'errore è registrato nel log, e ciò che resta disallineata è la copia
+versionabile — condizione da correggere, non da subire in esercizio.
 
 ## Esito dell'esecuzione
 
 | Voce | Valore |
 |---|---|
 | Data | 18/08/2026 |
-| Baseline | ramo `develop`, commit `07fad2b`, tag `1.0.0` |
+| Baseline | ramo `develop`, tag `1.1.0` |
 | Ambiente | binario compilato dalla baseline, database SQLite locale, istanza isolata su porte dedicate |
-| Esito | **16 casi su 16 superati** |
+| Esito | **22 casi su 22 superati** |
 
 Nessun caso fallito e nessuno scostamento rispetto ai comportamenti e alle
 limitazioni dichiarati in `FORK_CHANGES.md`.
+
+Una precedente esecuzione di questo piano, il 18/08/2026 sulla baseline `1.0.0`,
+aveva superato 16 casi su 16. In quella versione le regole da file costituivano
+una seconda sorgente non visibile nel pannello, e il piano lo verificava come
+limitazione nota; la sezione «Cosa il piano non copre» ne dà conto.
 
 ## Cosa il piano non copre
 
@@ -78,4 +107,10 @@ limitazioni dichiarati in `FORK_CHANGES.md`.
 - **Interfaccia grafica.** I casi agiscono sulle API, che sono lo stesso percorso
   usato dal pannello. La verifica visiva del pannello si fa con
   `send-samples.py` e l'interfaccia web.
-- **Concorrenza.** Le prove sono a utente singolo.
+- **Concorrenza.** Le prove sono a utente singolo. In particolare non è provato
+  il comportamento di due amministratori che salvano regole simultaneamente: la
+  scrittura del file è atomica, ma l'ultimo salvataggio prevale su quello
+  precedente, come già avviene per le regole nel database.
+- **Regole definite con `--tag` da riga di comando.** Restano una sorgente
+  aggiuntiva non visibile nel pannello, invariata rispetto al prodotto originale.
+  Sono pensate per l'uso locale e non sono impiegate nelle istanze IPZS.
