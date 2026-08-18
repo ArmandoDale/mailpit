@@ -278,6 +278,11 @@ Backing up the message database is still unnecessary. Keep the `--tags-config` f
 alongside the rest of the versioned configuration, and a rebuilt instance recovers its
 tagging with no further action.
 
+Note that a `--tags-config` path that does not exist stops Mailpit from starting — this is
+upstream behaviour and it is worth keeping: during a rebuild, forgetting to restore the
+file fails immediately and visibly, rather than producing a healthy instance that quietly
+accepts mail without tagging it.
+
 ---
 
 ## Known Limitations

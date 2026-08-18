@@ -324,6 +324,103 @@ def prove_file_configurazione(binario, tmp):
         ferma(p)
 
 
+def prove_robustezza(binario, tmp):
+    """Fedelta' del round-trip, aggiornamento di un'istanza esistente, file assente."""
+    print("\nFase E - fedelta' e percorsi di aggiornamento\n")
+
+    dir_conf = os.path.join(tmp, "conf-e")
+    os.makedirs(dir_conf, exist_ok=True)
+
+    # --- round-trip di regole non banali ---------------------------------
+    yml = os.path.join(dir_conf, "tags.yaml")
+    scrivi_file_regole(yml, "filters: []\n")
+
+    complesse = [
+        {"match": 'subject:"Nota di credito"', "tags": ["Amministrazione", "Priorita-alta"]},
+        {"match": "from:fatturazione@dev.test.local has:attachment",
+         "tags": ["Fatturazione", "Con-allegato", "Progetto X"]},
+        {"match": "subject:Contratto -subject:Bozza", "tags": ["Legale"]},
+    ]
+
+    db = os.path.join(tmp, "prova-roundtrip.db")
+    p = avvia(binario, db, extra=("--tags-config", yml))
+    try:
+        api("PUT", "/api/v1/tag-filters", {"Filters": complesse})
+        salvate = api("GET", "/api/v1/tag-filters")
+    finally:
+        ferma(p)
+
+    # il database nuovo puo' ricostruirle solo leggendo il file
+    db2 = os.path.join(tmp, "prova-roundtrip2.db")
+    p = avvia(binario, db2, extra=("--tags-config", yml))
+    try:
+        caso("PT-23", "regole con piu' tag e sintassi articolata sopravvivono al round-trip",
+             salvate, api("GET", "/api/v1/tag-filters"))
+
+        invia("fatturazione@dev.test.local", "Nota di credito 12", allegato=True)
+        caso("PT-24", "dopo il round-trip la regola con tag multipli li applica tutti",
+             ["Amministrazione", "Con-allegato", "Fatturazione", "Priorita-alta", "Progetto X"],
+             sorted(tag_di("Nota di credito 12")))
+
+        invia("legale@dev.test.local", "Contratto Bozza interna")
+        caso("PT-25", "dopo il round-trip la negazione nel criterio resta efficace",
+             [], tag_di("Contratto Bozza interna"))
+    finally:
+        ferma(p)
+
+    # --- istanza gia' in esercizio che adotta il file --------------------
+    # e' il percorso di ogni istanza esistente al momento dell'aggiornamento:
+    # regole gia' nel database, file di configurazione introdotto solo ora.
+    db3 = os.path.join(tmp, "prova-adozione.db")
+    p = avvia(binario, db3)
+    try:
+        api("PUT", "/api/v1/tag-filters", {"Filters": [REGOLA_FATTURE]})
+    finally:
+        ferma(p)
+
+    yml3 = os.path.join(dir_conf, "adozione.yaml")
+    scrivi_file_regole(
+        yml3, 'filters:\n  - match: "subject:Contratto"\n    tags: "Da-file"\n')
+
+    p = avvia(binario, db3, extra=("--tags-config", yml3))
+    try:
+        caso("PT-26", "un'istanza con regole preesistenti le conserva e assorbe quelle del file",
+             ["subject:Fattura", "subject:Contratto"],
+             [r["match"] for r in api("GET", "/api/v1/tag-filters")])
+        caso("PT-27", "l'adozione del file non duplica le regole gia' presenti",
+             1, sum(1 for r in api("GET", "/api/v1/tag-filters")
+                    if r["match"] == "subject:Fattura"))
+    finally:
+        ferma(p)
+
+    # riavvio: la regola preesistente e' ora anche nel file
+    p = avvia(binario, db3, extra=("--tags-config", yml3))
+    try:
+        caso("PT-28", "dopo l'adozione entrambe le regole sono nel file versionabile",
+             ["subject:Fattura", "subject:Contratto"], leggi_file_regole(yml3))
+    finally:
+        ferma(p)
+
+    # --- file dichiarato ma assente -------------------------------------
+    # scenario di ricostruzione in cui si dimentica di riportare il file
+    mancante = os.path.join(dir_conf, "non-esiste.yaml")
+    db4 = os.path.join(tmp, "prova-file-assente.db")
+    proc = subprocess.Popen(
+        [binario, "--database", db4,
+         "--listen", f"127.0.0.1:{HTTP_PORT}",
+         "--smtp", f"127.0.0.1:{SMTP_PORT}",
+         "--max", "0", "--tags-config", mancante],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    try:
+        uscito = proc.wait(timeout=20)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        uscito = None
+    caso("PT-29", "un file di configurazione dichiarato ma assente impedisce l'avvio",
+         True, uscito is not None and uscito != 0)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mailpit", default=None, help="percorso del binario")
@@ -339,6 +436,7 @@ def main():
     try:
         prove_runtime(binario, tmp)
         prove_file_configurazione(binario, tmp)
+        prove_robustezza(binario, tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

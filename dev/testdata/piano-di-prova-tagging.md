@@ -82,14 +82,37 @@ filesystem si trasformi in un'indisponibilità della funzionalità: il salvatagg
 riesce, l'errore è registrato nel log, e ciò che resta disallineata è la copia
 versionabile — condizione da correggere, non da subire in esercizio.
 
+### Fase E — fedeltà del formato e percorsi di aggiornamento
+
+| # | Caso | Risultato atteso | Verifica |
+|---|---|---|---|
+| PT-23 | Regole con più tag, frase tra virgolette e negazione, riprese da un database nuovo | Identiche a quelle salvate | Fedeltà del round-trip attraverso il file |
+| PT-24 | Messaggio corrispondente a una regola con tre tag, dopo il round-trip | Tutti i tag sono applicati | I tag multipli non si perdono nel formato a lista separata da virgole |
+| PT-25 | Messaggio escluso da una negazione nel criterio, dopo il round-trip | Nessun tag | La sintassi articolata sopravvive alla riscrittura |
+| PT-26 | Istanza con regole già nel database che adotta un file di configurazione | Le regole preesistenti restano, quelle del file si aggiungono | Percorso di aggiornamento di un'istanza in esercizio |
+| PT-27 | Stessa istanza, regola già presente anche nel file | Nessuna duplicazione | Il confronto avviene sul criterio di selezione |
+| PT-28 | Riavvio dopo l'adozione | Il file contiene entrambe le regole | Le regole preesistenti diventano versionabili |
+| PT-29 | File di configurazione dichiarato ma assente | Il servizio non si avvia | Il ripristino incompleto fallisce in modo evidente |
+
+**Perché PT-26 conta.** È il percorso che ogni istanza già in esercizio compie al
+momento dell'aggiornamento: le sue regole sono nel database, il file di
+configurazione viene introdotto solo ora. La semina non deve sovrascriverle né
+duplicarle, ma assorbire le une nelle altre e rendere versionabili anche quelle
+che esistevano prima.
+
+**Perché PT-29 conta.** Un file dichiarato e non presente ferma l'avvio invece di
+lasciar partire un servizio che accetta posta senza etichettarla. È il
+comportamento voluto: in un ripristino, dimenticare il file diventa un errore
+immediato e visibile invece di un guasto silenzioso che si manifesta giorni dopo.
+
 ## Esito dell'esecuzione
 
 | Voce | Valore |
 |---|---|
 | Data | 18/08/2026 |
-| Baseline | ramo `develop`, tag `1.1.0` |
+| Baseline | ramo `develop`, tag `1.1.1` |
 | Ambiente | binario compilato dalla baseline, database SQLite locale, istanza isolata su porte dedicate |
-| Esito | **22 casi su 22 superati** |
+| Esito | **29 casi su 29 superati** |
 
 Nessun caso fallito e nessuno scostamento rispetto ai comportamenti e alle
 limitazioni dichiarati in `FORK_CHANGES.md`.
@@ -111,6 +134,9 @@ limitazione nota; la sezione «Cosa il piano non copre» ne dà conto.
   il comportamento di due amministratori che salvano regole simultaneamente: la
   scrittura del file è atomica, ma l'ultimo salvataggio prevale su quello
   precedente, come già avviene per le regole nel database.
+- **Permessi sul file.** PT-21 prova il fallimento della scrittura rendendo
+  irraggiungibile la cartella. Non è provato il caso di file presente ma di sola
+  lettura, che dipende dal comportamento del sistema operativo ospite.
 - **Regole definite con `--tag` da riga di comando.** Restano una sorgente
   aggiuntiva non visibile nel pannello, invariata rispetto al prodotto originale.
   Sono pensate per l'uso locale e non sono impiegate nelle istanze IPZS.
