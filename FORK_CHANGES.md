@@ -268,6 +268,10 @@ Two properties keep this from causing surprises:
   still stored, the error is logged, and a warning states that the rules exist only in
   the database until the problem is fixed. A filesystem issue degrades versionability,
   not the feature.
+- **Saves are serialised.** Writing the setting, reloading the matchers and rewriting the
+  file happen under one mutex. Atomic file replacement alone was not enough: two
+  concurrent saves could reach the database in one order and the file in the other,
+  leaving the file describing rules that were not the active ones.
 
 The file keeps the exact format read by upstream Mailpit, so a file written here is still
 a valid `--tags-config` file, and one written by hand is still a valid seed.

@@ -21,6 +21,7 @@ import smtplib
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -421,6 +422,74 @@ def prove_robustezza(binario, tmp):
          True, uscito is not None and uscito != 0)
 
 
+def prove_concorrenza_e_permessi(binario, tmp):
+    """Le due aree dichiarate scoperte: salvataggi simultanei e file di sola lettura."""
+    print("\nFase F - concorrenza e permessi sul file\n")
+
+    dir_conf = os.path.join(tmp, "conf-f")
+    os.makedirs(dir_conf, exist_ok=True)
+
+    # --- salvataggi simultanei ------------------------------------------
+    yml = os.path.join(dir_conf, "tags.yaml")
+    scrivi_file_regole(yml, "filters: []\n")
+    db = os.path.join(tmp, "prova-concorrenza.db")
+
+    p = avvia(binario, db, extra=("--tags-config", yml))
+    try:
+        errori = []
+
+        def salva(n):
+            try:
+                api("PUT", "/api/v1/tag-filters",
+                    {"Filters": [{"match": f"subject:Pratica-{n}",
+                                  "tags": [f"Pratica-{n}"]}]})
+            except Exception as e:          # pragma: no cover - diagnostico
+                errori.append(repr(e))
+
+        thread = [threading.Thread(target=salva, args=(n,)) for n in range(12)]
+        for t in thread:
+            t.start()
+        for t in thread:
+            t.join()
+
+        caso("PT-30", "dodici salvataggi simultanei si concludono senza errori",
+             [], errori)
+
+        finale_db = api("GET", "/api/v1/tag-filters")
+        caso("PT-31", "dopo i salvataggi simultanei il database ha una sola regola coerente",
+             1, len(finale_db))
+
+        # il file deve essere leggibile e contenere una delle scritture, non un ibrido
+        nel_file = leggi_file_regole(yml)
+        caso("PT-32", "il file non risulta troncato o interlacciato",
+             1, len(nel_file))
+
+        caso("PT-33", "il file rispecchia lo stato finale del database",
+             [r["match"] for r in finale_db], nel_file)
+    finally:
+        ferma(p)
+
+    # --- file presente ma di sola lettura --------------------------------
+    yml2 = os.path.join(dir_conf, "sola-lettura.yaml")
+    scrivi_file_regole(
+        yml2, 'filters:\n  - match: "subject:Contratto"\n    tags: "Da-file"\n')
+    db2 = os.path.join(tmp, "prova-permessi.db")
+
+    p = avvia(binario, db2, extra=("--tags-config", yml2))
+    try:
+        os.chmod(yml2, 0o444)
+        api("PUT", "/api/v1/tag-filters", {"Filters": [REGOLA_FATTURE]})
+        caso("PT-34", "con file di sola lettura la regola si salva nel database",
+             [REGOLA_FATTURE], api("GET", "/api/v1/tag-filters"))
+
+        invia("fatturazione@dev.test.local", "Fattura di dicembre")
+        caso("PT-35", "e il servizio continua a etichettare i messaggi in arrivo",
+             ["Fatturazione"], tag_di("Fattura di dicembre"))
+    finally:
+        ferma(p)
+        os.chmod(yml2, 0o666)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mailpit", default=None, help="percorso del binario")
@@ -437,6 +506,7 @@ def main():
         prove_runtime(binario, tmp)
         prove_file_configurazione(binario, tmp)
         prove_robustezza(binario, tmp)
+        prove_concorrenza_e_permessi(binario, tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

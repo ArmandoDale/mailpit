@@ -105,14 +105,38 @@ lasciar partire un servizio che accetta posta senza etichettarla. È il
 comportamento voluto: in un ripristino, dimenticare il file diventa un errore
 immediato e visibile invece di un guasto silenzioso che si manifesta giorni dopo.
 
+### Fase F — concorrenza e permessi sul file
+
+| # | Caso | Risultato atteso | Verifica |
+|---|---|---|---|
+| PT-30 | Dodici salvataggi simultanei | Nessun errore restituito | Il salvataggio regge l'accesso concorrente |
+| PT-31 | Stato del database al termine | Una sola regola, coerente | L'ultimo salvataggio prevale in modo pulito |
+| PT-32 | Stato del file al termine | Una sola regola, file leggibile | La scrittura atomica esclude file troncati o interlacciati |
+| PT-33 | Confronto fra database e file | Coincidono | Il file descrive le regole realmente attive |
+| PT-34 | File presente ma di sola lettura | La regola è comunque salvata | Il permesso negato non blocca la funzionalità |
+| PT-35 | Messaggio in arrivo con file di sola lettura | Il messaggio è etichettato | Il servizio resta operativo |
+
+**PT-33 ha trovato un difetto reale.** Alla prima stesura il caso falliva in
+quattro esecuzioni su sei. Due salvataggi simultanei potevano raggiungere il
+database in un ordine e il file nell'ordine opposto: il database conteneva le
+regole di uno, il file quelle dell'altro. La scrittura atomica non bastava,
+perché proteggeva il singolo file e non la sequenza delle due scritture. Il
+salvataggio è stato quindi serializzato per intero, e il caso passa ora in otto
+esecuzioni consecutive.
+
+Vale la pena notare **perché** il difetto era grave malgrado la sua rarità: la
+divergenza era silenziosa e si sarebbe manifestata solo alla ricostruzione di
+un'istanza, restituendo regole diverse da quelle attive. È esattamente la classe
+di guasto che questa evoluzione doveva eliminare.
+
 ## Esito dell'esecuzione
 
 | Voce | Valore |
 |---|---|
 | Data | 18/08/2026 |
-| Baseline | ramo `develop`, tag `1.1.1` |
+| Baseline | ramo `develop`, tag `1.1.2` |
 | Ambiente | binario compilato dalla baseline, database SQLite locale, istanza isolata su porte dedicate |
-| Esito | **29 casi su 29 superati** |
+| Esito | **35 casi su 35 superati**, confermati in otto esecuzioni consecutive |
 
 Nessun caso fallito e nessuno scostamento rispetto ai comportamenti e alle
 limitazioni dichiarati in `FORK_CHANGES.md`.
@@ -130,13 +154,12 @@ limitazione nota; la sezione «Cosa il piano non copre» ne dà conto.
 - **Interfaccia grafica.** I casi agiscono sulle API, che sono lo stesso percorso
   usato dal pannello. La verifica visiva del pannello si fa con
   `send-samples.py` e l'interfaccia web.
-- **Concorrenza.** Le prove sono a utente singolo. In particolare non è provato
-  il comportamento di due amministratori che salvano regole simultaneamente: la
-  scrittura del file è atomica, ma l'ultimo salvataggio prevale su quello
-  precedente, come già avviene per le regole nel database.
-- **Permessi sul file.** PT-21 prova il fallimento della scrittura rendendo
-  irraggiungibile la cartella. Non è provato il caso di file presente ma di sola
-  lettura, che dipende dal comportamento del sistema operativo ospite.
+- **Concorrenza oltre il salvataggio delle regole.** La Fase F prova i
+  salvataggi simultanei. Restano non provati gli accessi concorrenti al resto del
+  servizio, per i quali valgono le garanzie del prodotto originale.
+- **Race detector.** La verifica della concorrenza è a scatola chiusa, ripetuta.
+  L'esecuzione della suite Go con `-race` richiede un compilatore C non presente
+  sulla macchina di prova e va condotta sull'ambiente di build.
 - **Regole definite con `--tag` da riga di comando.** Restano una sorgente
   aggiuntiva non visibile nel pannello, invariata rispetto al prodotto originale.
   Sono pensate per l'uso locale e non sono impiegate nelle istanze IPZS.

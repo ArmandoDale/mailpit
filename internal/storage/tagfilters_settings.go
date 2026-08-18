@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 
 	"github.com/axllent/mailpit/internal/logger"
 	"github.com/axllent/mailpit/internal/tools"
@@ -34,6 +35,13 @@ func GetRuntimeTagFilters() []TagFilterRule {
 	return normalizeTagFilterRules(rules)
 }
 
+// tagFilterSaveMutex serialises the whole save: writing the setting, reloading the
+// matchers and rewriting the configuration file. Without it two concurrent saves can
+// commit to the database in one order and reach the file in the other, leaving the
+// file describing rules that are not the active ones — a divergence that would only
+// surface when an instance is rebuilt from that file.
+var tagFilterSaveMutex sync.Mutex
+
 // SetRuntimeTagFilters validates and stores runtime tag filter rules.
 func SetRuntimeTagFilters(rules []TagFilterRule) ([]TagFilterRule, error) {
 	normalized := normalizeTagFilterRules(rules)
@@ -41,6 +49,9 @@ func SetRuntimeTagFilters(rules []TagFilterRule) ([]TagFilterRule, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	tagFilterSaveMutex.Lock()
+	defer tagFilterSaveMutex.Unlock()
 
 	if err := SettingPut(runtimeTagFilterSettingKey, string(b)); err != nil {
 		return nil, err
