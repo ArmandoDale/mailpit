@@ -134,12 +134,19 @@ di guasto che questa evoluzione doveva eliminare.
 | Voce | Valore |
 |---|---|
 | Data | 18/08/2026 |
-| Baseline | ramo `develop`, tag `1.1.2` |
+| Baseline | ramo `develop`, tag `1.1.5` |
 | Ambiente | binario compilato dalla baseline, database SQLite locale, istanza isolata su porte dedicate |
-| Esito | **35 casi su 35 superati**, confermati in otto esecuzioni consecutive |
+| Esito | **35 casi su 35 superati**, confermati in quattro esecuzioni consecutive |
 
 Nessun caso fallito e nessuno scostamento rispetto ai comportamenti e alle
 limitazioni dichiarati in `FORK_CHANGES.md`.
+
+Il piano era già stato eseguito con esito pieno sulla baseline `1.1.2`, in otto
+esecuzioni consecutive. È stato rieseguito sulla baseline dichiarata dal SID
+perché una campagna di prova vale per la revisione su cui gira: fra le due
+baseline il codice del prodotto non cambia — cambiano la documentazione del fork
+e la configurazione di riferimento — ma è una circostanza che si accerta
+rieseguendo, non si assume.
 
 Una precedente esecuzione di questo piano, il 18/08/2026 sulla baseline `1.0.0`,
 aveva superato 16 casi su 16. In quella versione le regole da file costituivano

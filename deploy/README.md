@@ -25,10 +25,20 @@ delle regole e va conservato accanto a questo file.
     python deploy/verifica-configurazione.py --mailpit ./mailpit
 
 Avvia un'istanza con questa configurazione e osserva il servizio in esecuzione,
-un'affermazione del SID alla volta: autenticazione, assenza dell'azione di rilascio,
-divieto di risorse remote, cattura di un messaggio verso un dominio esterno,
-etichettatura dalle regole del file, assenza del servizio POP3, assenza dell'oggetto
-dei messaggi nei log, eliminazione automatica per numerosità.
+un'affermazione del SID alla volta: autenticazione dell'interfaccia e dell'API di
+invio, assenza dell'azione di rilascio, assenza dell'inoltro automatico, direttive
+della Content Security Policy su stili e caratteri remoti, cattura di un messaggio
+verso un dominio esterno, etichettatura dalle regole del file, assenza del servizio
+POP3, assenza dell'oggetto dei messaggi nei log, eliminazione automatica per
+numerosità.
+
+Due casi non verificano un controllo ma un **limite**, e riescono quando il limite
+c'è: le immagini remote di un messaggio restano consentite dalla politica di
+sicurezza, e il rilascio si attiva con il solo `MP_SMTP_RELAY_HOST`, senza alcun
+file di configurazione. Sono i due motivi per cui il file di riferimento dichiara
+vuote anche le variabili del rilascio e per cui il SID attribuisce alla postazione,
+e non alla VM, il traffico generato all'apertura di un messaggio. Se smettessero di
+riuscire, il prodotto sarebbe cambiato e le due affermazioni andrebbero rilette.
 
 Non verifica che il file contenga certe righe — quello sarebbe verificare sé stessi.
 Le uniche due voci dichiarate e non osservate sono le soglie di conservazione ai

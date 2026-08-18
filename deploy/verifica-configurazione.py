@@ -117,6 +117,44 @@ def pruning_per_numerosita(binario, tmp):
             p.kill()
 
 
+def rilascio_attivabile_da_variabili(binario, tmp):
+    """Se il rilascio si attivi con il solo MP_SMTP_RELAY_HOST, senza file YAML.
+
+    Non e' una verifica della configurazione di riferimento ma della ragione per
+    cui essa dichiara vuote anche le variabili del rilascio e dell'inoltro:
+    config/validators.go:87 accetta la configurazione appena l'host e' valorizzato
+    e imposta ReleaseEnabled. Vincolare il solo MP_SMTP_RELAY_CONFIG lascerebbe
+    aperta questa seconda via. Restituisce True se l'azione di rilascio compare.
+    """
+    porta_http, porta_smtp = 18227, 11227
+    env = dict(os.environ)
+    env["MP_SMTP_RELAY_HOST"] = "smtp.esempio.invalid"
+    env["MP_SMTP_RELAY_PORT"] = "25"
+    p = subprocess.Popen(
+        [binario, "--database", os.path.join(tmp, "relay-env.db"),
+         "--listen", f"127.0.0.1:{porta_http}",
+         "--smtp", f"127.0.0.1:{porta_smtp}"],
+        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    try:
+        for _ in range(60):
+            try:
+                urllib.request.urlopen(
+                    f"http://127.0.0.1:{porta_http}/readyz", timeout=1).read()
+                break
+            except Exception:
+                time.sleep(0.25)
+        dati = json.loads(urllib.request.urlopen(
+            f"http://127.0.0.1:{porta_http}/api/v1/webui", timeout=20).read())
+        return bool(dati.get("MessageRelay", {}).get("Enabled"))
+    finally:
+        p.terminate()
+        try:
+            p.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            p.kill()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mailpit", default=None)
@@ -166,17 +204,17 @@ def main():
         try:
             print("\nVerifica della configurazione di riferimento contro le affermazioni del SID\n")
 
-            # RS-05: interfaccia e API protette da autenticazione
+            # RS-04: interfaccia e API protette da autenticazione
             try:
                 http("/api/v1/info", con_auth=False)
                 anonimo = "consentito"
             except urllib.error.HTTPError as e:
                 anonimo = f"respinto {e.code}"
-            verifica("RS-05", "l'accesso senza credenziali e' respinto",
+            verifica("RS-04", "l'accesso senza credenziali e' respinto",
                      "respinto 401", anonimo)
 
             info = json.loads(http("/api/v1/info").read())
-            verifica("RS-05", "l'accesso con credenziali valide e' consentito",
+            verifica("RS-04", "l'accesso con credenziali valide e' consentito",
                      True, "Version" in info)
 
             # RS-01: nessun percorso di uscita, l'azione di rilascio non e' offerta
@@ -184,11 +222,49 @@ def main():
             verifica("RS-01", "l'interfaccia non espone l'azione di rilascio",
                      False, bool(webui.get("MessageRelay", {}).get("Enabled")))
 
-            # RS-12: il recupero di risorse remote e' inibito
+            # RS-01: l'inoltro automatico dell'intero flusso non e' attivo.
+            # E' un meccanismo distinto dal rilascio e non compare nella
+            # configurazione esposta dall'interfaccia: si osserva sul log, dove
+            # l'attivazione scrive una riga esplicita (config/validators.go:254).
+            log.flush()
+            log.seek(0)
+            avvio = log.read()
+            verifica("RS-01", "l'inoltro automatico non e' attivo",
+                     False, "[forward] enabling message forwarding" in avvio)
+
+            # RS-04: l'API di invio non e' raggiungibile senza credenziali.
+            # Ha un proprio percorso di autenticazione (server/server.go:243) e
+            # una variabile che lo disattiva: va verificata a parte.
+            try:
+                req = urllib.request.Request(
+                    BASE + "/api/v1/send", method="POST",
+                    data=b'{"From":{"Email":"a@dev.test.local"},"To":[{"Email":"b@esterno.example.com"}]}',
+                    headers={"Content-Type": "application/json"})
+                urllib.request.urlopen(req, timeout=5).read()
+                invio_anonimo = "consentito"
+            except urllib.error.HTTPError as e:
+                invio_anonimo = f"respinto {e.code}"
+            verifica("RS-04", "l'API di invio senza credenziali e' respinta",
+                     "respinto 401", invio_anonimo)
+
+            # RS-11: il recupero di risorse remote all'apertura di un messaggio
+            # avviene dal browser di chi lo apre, non dalla VM, ed e' quindi
+            # governato dalla Content Security Policy e non dalle regole di rete.
             csp = http("/").headers.get("Content-Security-Policy", "")
-            stile = [d for d in csp.split(";") if d.strip().startswith("style-src")]
-            verifica("RS-12", "la politica di sicurezza vieta stili di origine remota",
-                     True, bool(stile) and "'self'" in stile[0] and "http" not in stile[0])
+            direttiva = lambda nome: next(
+                (d.strip() for d in csp.split(";") if d.strip().startswith(nome)), "")
+            stile, font = direttiva("style-src"), direttiva("font-src")
+            verifica("RS-11", "la politica vieta stili di origine remota",
+                     True, bool(stile) and "'self'" in stile and "http" not in stile)
+            verifica("RS-11", "la politica vieta caratteri di origine remota",
+                     True, bool(font) and "'self'" in font and "http" not in font)
+
+            # Limite dichiarato nel SID, verificato qui perche' una limitazione
+            # provata e' un comportamento accertato: il prodotto non consente di
+            # restringere img-src, quindi le immagini remote di un messaggio
+            # vengono caricate dalla postazione che lo apre.
+            verifica("RS-11", "le immagini remote restano consentite (limite dichiarato)",
+                     True, "*" in direttiva("img-src"))
 
             # RF-02 / RS-01: il messaggio e' accettato e non consegnato
             m = EmailMessage()
@@ -221,7 +297,7 @@ def main():
             verifica("RF-13", "la soglia per anzianita' e' dichiarata",
                      "7d", configurata.get("MP_MAX_AGE"))
 
-            # RS-14 / RS-13: POP3 e webhook non attivi
+            # RS-13 / RS-12: POP3 e webhook non attivi
             try:
                 import socket
                 s = socket.create_connection(("127.0.0.1", 1110), timeout=2)
@@ -229,19 +305,27 @@ def main():
                 pop3 = "in ascolto"
             except Exception:
                 pop3 = "non in ascolto"
-            verifica("RS-14", "il servizio POP3 non e' in ascolto", "non in ascolto", pop3)
+            verifica("RS-13", "il servizio POP3 non e' in ascolto", "non in ascolto", pop3)
 
-            # RS-11: il log non contiene l'oggetto del messaggio ricevuto
+            # RS-10: il log non contiene l'oggetto del messaggio ricevuto
             log.flush()
             log.seek(0)
             contenuto = log.read()
-            verifica("RS-11", "il log non riporta l'oggetto dei messaggi",
+            verifica("RS-10", "il log non riporta l'oggetto dei messaggi",
                      False, "Verifica di configurazione" in contenuto)
             verifica("4.2.2.2", "il log documenta la semina delle regole dal file",
                      True, "seeded" in contenuto)
 
             verifica("RF-13", "il meccanismo di eliminazione per numerosita' e' operante",
                      3, pruning_per_numerosita(binario, tmp))
+
+            # RS-01: la seconda via di attivazione del rilascio esiste davvero.
+            # Il caso non verifica la configurazione di riferimento ma la ragione
+            # per cui essa dichiara vuote anche le variabili del rilascio: se
+            # questo controllo smettesse di riuscire, quelle righe sarebbero
+            # diventate superflue e andrebbero rilette, non tolte in silenzio.
+            verifica("RS-01", "il rilascio si attiva anche senza file, con il solo host",
+                     True, rilascio_attivabile_da_variabili(binario, tmp))
         finally:
             p.terminate()
             try:
