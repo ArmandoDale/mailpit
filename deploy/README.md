@@ -6,19 +6,31 @@ soggetta a change management, e ogni sua voce corrisponde a un'affermazione del 
 
 ## Perché è versionata
 
-Il database dei messaggi non è oggetto di ripristino: i messaggi si rigenerano
-ri-eseguendo un test. Questo file, insieme al file delle regole di etichettatura che
-esso dichiara, è quindi **quanto basta a ricostruire un'istanza**.
+Su Kubernetes questo file diventa la ConfigMap dell'istanza. Il resto dello stato sta
+sul volume persistente montato su `/data`: il database dei messaggi e il file delle
+regole di etichettatura, che il servizio riscrive a ogni modifica. Il volume è
+soggetto a backup giornaliero con retention di sette giorni (SID, T-08): i messaggi
+si rigenerano ri-eseguendo un test, le regole no, ed è per loro che il backup esiste.
+Questo file e il backup del volume sono quindi **quanto basta a ricostruire
+un'istanza**.
 
 ## Cosa va valorizzato per ambiente
 
-Le voci marcate `[AMBIENTE]` nel file: percorso del file delle credenziali, percorso
-del file delle regole, percorso del database, etichetta dell'ambiente. Tutto il resto
-è vincolato dal SID.
+Le voci marcate `[AMBIENTE]` nel file: percorso del file delle credenziali,
+eventuale autenticazione SMTP, etichetta dell'ambiente. Tutto il resto è vincolato
+dal SID, compresi i percorsi del database e del file delle regole sotto `/data`.
 
 Il file delle credenziali e quello delle regole **non stanno qui**: il primo è
-distribuito tramite Secret, il secondo è scritto dal servizio stesso a ogni modifica
-delle regole e va conservato accanto a questo file.
+distribuito tramite Secret, montato in sola lettura; il secondo è scritto dal servizio
+stesso a ogni modifica delle regole e sta sul volume persistente, non in una ConfigMap.
+
+Il file delle regole deve esistere all'avvio, anche privo di regole: se manca, il
+servizio non parte. Su un volume nuovo lo crea quindi un initContainer eseguito prima
+del servizio, con la stessa immagine:
+
+    test -f /data/tag-filters.yaml || printf 'filters: []\n' > /data/tag-filters.yaml
+
+Il database non ha questo vincolo: se manca, il servizio lo crea.
 
 ## Verifica
 
@@ -37,7 +49,7 @@ c'è: le immagini remote di un messaggio restano consentite dalla politica di
 sicurezza, e il rilascio si attiva con il solo `MP_SMTP_RELAY_HOST`, senza alcun
 file di configurazione. Sono i due motivi per cui il file di riferimento dichiara
 vuote anche le variabili del rilascio e per cui il SID attribuisce alla postazione,
-e non alla VM, il traffico generato all'apertura di un messaggio. Se smettessero di
+e non al pod, il traffico generato all'apertura di un messaggio. Se smettessero di
 riuscire, il prodotto sarebbe cambiato e le due affermazioni andrebbero rilette.
 
 Non verifica che il file contenga certe righe — quello sarebbe verificare sé stessi.

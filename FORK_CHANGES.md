@@ -27,6 +27,11 @@ servizio SMTP, l'analisi dei messaggi, il nucleo dello storage dei messaggi,
 l'autenticazione né le funzioni di rilascio e inoltro.** È il dato che sostanzia il
 contenimento dell'onere di riallineamento all'upstream.
 
+Fuori dalla personalizzazione, il `Dockerfile` differisce dall'upstream per le sole
+versioni delle immagini di base, fissate (`golang:1.25-alpine`, `alpine:3.24`) invece che
+lasciate a `latest`: dalla stessa baseline si ottiene così sempre la stessa immagine. Non
+tocca il codice del prodotto e non rientra nel conteggio precedente.
+
 ---
 
 ## Descrizione della funzionalità

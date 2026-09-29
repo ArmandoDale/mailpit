@@ -1,4 +1,4 @@
-FROM golang:alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 ARG VERSION=dev
 
@@ -10,7 +10,7 @@ RUN  apk upgrade && apk add git npm && \
 npm ci && npm run package && \
 CGO_ENABLED=0 go build -ldflags "-s -w -X github.com/axllent/mailpit/config.Version=${VERSION}" -o /mailpit
 
-FROM alpine:latest
+FROM alpine:3.24
 
 LABEL org.opencontainers.image.title="Mailpit" \
   org.opencontainers.image.description="An email and SMTP testing tool with API for developers" \

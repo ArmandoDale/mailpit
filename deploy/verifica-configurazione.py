@@ -248,7 +248,7 @@ def main():
                      "respinto 401", invio_anonimo)
 
             # RS-11: il recupero di risorse remote all'apertura di un messaggio
-            # avviene dal browser di chi lo apre, non dalla VM, ed e' quindi
+            # avviene dal browser di chi lo apre, non dal pod, ed e' quindi
             # governato dalla Content Security Policy e non dalle regole di rete.
             csp = http("/").headers.get("Content-Security-Policy", "")
             direttiva = lambda nome: next(
